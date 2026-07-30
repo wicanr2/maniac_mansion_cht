@@ -1,0 +1,120 @@
+Are you sure you want to quit? (Y/N)	確定要離開遊戲嗎？(Y/N)
+Scripting	Scripting
+Are you sure you want to restart? (Y/N)	確定要重新開始嗎？(Y/N)
+Save	存檔
+Load	載入
+Play	開始
+Quit	離開
+Cancel	取消
+OK	確定
+Dave	戴夫
+Syd	賽德
+Michael	邁克爾
+Wendy	溫蒂
+Bernard	伯納
+Razor	瑞爾
+Jeff	傑夫
+Sandy	珊蒂
+Dr. Fred	佛瑞德博士
+Nurse Edna	愛德娜護士
+Weird Ed	怪異愛德
+Meteor	隕石
+Green Tentacle	大食怪
+Purple Tentacle	紫色怪物
+Mark Eteer	馬克・艾提爾
+Wink Smiley	溫克・史麥利
+Police	警察
+package>l	包裹>l
+tombstone>l	墓碑>l
+exploded hamster	爆掉的倉鼠
+flashlight>u	手電筒>u
+batteries	電池
+wax fruit	蠟水果
+demo tape	試聽帶
+broken bottle of ketchup	破掉的番茄醬瓶
+old rotten turkey	腐爛的老火雞
+jar of developer	一罐顯影液
+sponge with water	吸水的海綿
+sponge with developer	吸了顯影液的海綿
+ripped envelope	撕開的信封
+stamped envelope	貼了郵票的信封
+memoir in envelope	裝著回憶錄的信封
+memo in stamped envelope	貼了郵票、裝著回憶錄的信封
+tape in envelope	裝著卡帶的信封
+tape in stamped envelope	貼了郵票、裝著卡帶的信封
+prints	沖洗好的照片
+translator1	繁體中文化
+translator2	wicanr2 (L.CY)
+Hello, and welcome to Maniac Mansion,	哈囉，歡迎來到《瘋狂大樓》，
+...an exciting new game from Lucasfilm.	⋯⋯盧卡斯影業推出的刺激新作。
+I'm Dave Miller, your personal guide...	我是戴夫・米勒，你的專屬導覽員⋯⋯
+...and one of the stars of the adventure.	⋯⋯也是這場冒險的主角之一。
+Here's where Sandy was held captive,	珊蒂就是被關在這裡，
+...and where we rescued her from Dr. Fred.	⋯⋯我們也是在這裡把她從佛瑞德博士手中救出來的。
+Let's go inside.	我們進去看看。
+I've arranged for the occupants to be...	我已經安排好讓住在這裡的人⋯⋯
+...gone during our 'tour.'	⋯⋯在我們「導覽」時都不在家。
+We shouldn't have any problems.	應該不會有什麼問題。
+How long do we have to stay down here?	我們還要在下面待多久？
+Shh... I think I hear something!	噓⋯⋯我好像聽到什麼聲音！
+I miss my hamster.	我好想我的倉鼠。
+Quiet! I think I hear someone upstairs!	安靜！我好像聽到樓上有人！
+Oh great! Who forgot to lock the door?	真是太好了！誰忘記鎖門的？
+PURPLE TENTACLE! 	紫色怪物！ 
+Go upstairs and check it out!	上樓去看看！
+I really DO miss my hamster!	我真的好想我的倉鼠！
+Oh. That was a 'cut-scene'.	哦，剛剛那是「過場動畫」。
+They let you know what's...	它會讓你知道⋯⋯
+...going on elsewhere in the mansion.	⋯⋯大樓裡別的地方發生了什麼事。
+All these tours make me hungry.	導覽這麼久，我都餓了。
+Here's the kitchen.	這裡是廚房。
+I see they haven't cleaned up the, er...	看樣子他們還沒清理那個，呃⋯⋯
+...uh, um... the mess yet.	⋯⋯呃，嗯⋯⋯那攤爛攤子。
+I think I just lost my appetite.	我好像沒胃口了。
+I know, let's go to my favorite room,	有了，我們去我最喜歡的房間，
+the basement.	地下室。
+Oh yes, no handle.	對喔，沒有把手。
+Now how did I open this door last time?	上次我是怎麼打開這扇門的？
+Push it?	用推的？
+Nope. Maybe I need a running start.	不行。也許要助跑一下。
+Owwwwwwwwwwwwwwwww!	痛痛痛痛痛痛痛！
+Oh well, I'll let you figure it out.	算了，這個就留給你自己想吧。
+Hi Sandy, could you turn the music down?	嗨珊蒂，可以把音樂關小聲一點嗎？
+Sandy, the music's too loud!	珊蒂，音樂太大聲了！
+SANDY, TURN OFF THE MUSIC!	珊蒂，把音樂關掉！
+Oh!	哦！
+I'm sorry Dave, I couldn't hear you,	抱歉戴夫，我聽不到你說話，
+the music was too loud.	音樂太大聲了。
+Everybody's a comedian!	每個人都愛耍寶！
+I was just giving a tour to all these...	我剛剛正在替這些⋯⋯
+...future game players. Want to come?	⋯⋯未來的玩家導覽。要一起來嗎？
+Sure Dave, I'll go anywhere with you!	好啊戴夫，你去哪我都跟！
+Oh yes, in Maniac Mansion,	對了，在《瘋狂大樓》裡，
+you not only direct my actions,	你不只能指揮我的行動，
+but the actions of two of my friends.	還能指揮我兩個朋友的行動。
+You point to the verbs you see below...	你只要點下面看到的那些指令⋯⋯
+...to construct sentences.	⋯⋯就能組出一句話。
+This is the library.	這裡是圖書室。
+It's one of the many rooms in the game.	是遊戲裡眾多房間之一。
+And there are more than 450 objects...	而且有超過 450 種物品⋯⋯
+...that you can use to solve over...	⋯⋯可以用來解開超過⋯⋯
+Just a second.	等一下。
+Hello, who's there?	喂，哪位？
+Oh, Mom! I asked you not to call me at work.	哦，媽！我不是叫你別在我上班時打來嗎。
+I love you too...Mom.	我也愛你⋯⋯媽。
+Sandy?	珊蒂？
+SANDY!	珊蒂！
+Oh great! Not again!!	真是太好了！又來了！！
+Time to round up the Gang.	該把大夥兒集合起來了。
+All the kids have died.	所有的小孩都死了。
+The rescue attempt has failed.	救援行動失敗了。
+Dr. Fred, still under the evil meteor's	佛瑞德博士仍受那顆邪惡隕石
+influence, is destined to take over the	的操控，注定要征服這個世界
+world and a small part of the galaxy.	以及銀河系的一小角。
+Hope you like purple...	希望你喜歡紫色⋯⋯
+blood	血
+'1977'	「1977」
+I can't do it with my bare hands!	光靠雙手我辦不到！
+'Si trouve, envoyez-le au Louvre, poste paye.'	'Si trouve, envoyez-le au Louvre, poste paye.'
+font_320: 1  0  0  0  0  0  0  0  0  0  0  0  0  0  3  3  3  3  3  3  0	font_320: 1  0  0  0  0  0  0  0  0  0  0  0  0  0  3  3  3  3  3  3  0
+font_640: 13 14 14 14 14 14 14 14 14 14 14 14 14 14 13 13 13 13 13 13 14	font_640: 13 14 14 14 14 14 14 14 14 14 14 14 14 14 13 13 13 13 13 13 14
