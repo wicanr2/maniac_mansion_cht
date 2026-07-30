@@ -30,7 +30,16 @@ Maniac Mansion Deluxe 是 2004 年 Lucasfan Games 的同人重製版，用 **AGS
 * overlay 的前 32 個位元組完全一致：`39 12 01 00 3f 03 00 00 cc 09 00 00 9e 6b 9e 1d …`
 * 特徵字串：`_inst%d.exe`、`#InstallDir#`、`rundll32 desk.cpl,InstallScreenSaver %s`、`regsvr32 /s %s`、`Software\Microsoft\Windows\CurrentVersion\SharedDLLs`
 
-不是 Inno Setup、NSIS、7z-SFX、CAB 或 RAR-SFX——全檔搜不到任何一種的 magic。overlay 是**多段 zlib 流**（能找到多個 `78 9c` / `78 da` / `78 01` 檔頭），中間夾私有的目錄結構。因此 `7z`、`innoextract`、`cabextract` 都吃不下。
+不是 Inno Setup、NSIS、7z-SFX、CAB 或 RAR-SFX——全檔搜不到任何一種的 magic。overlay 是**多段 zlib 流**（能找到多個 `78 9c` / `78 da` / `78 01` 檔頭），中間夾私有的目錄結構，所以 `7z`、`innoextract`、`cabextract` 都吃不下。
+
+**後來查到它是什麼了：Clickteam Install Creator。** ScummVM 自己就有解包器（`common/compression/clickteam.cpp`），而且 AGS 的偵測表裡直接列了「從安裝檔內讀遊戲」的項目：
+
+```
+GAME_ENTRY("maniacmansiondeluxe", "clk:manicmdsetup.exe:Maniac.exe", ...)   // v1.05
+GAME_ENTRY("maniacmansiondeluxe", "clk:Maniac-Mansion-Deluxe_Win_EN-FR-ES-DE-IT.exe:Maniac.exe", ...)  // v1.4
+```
+
+也就是說連裝都不必裝也能跑。不過中文化要往遊戲目錄丟 `.tra` 與字型檔，還是裝出鬆散檔比較好處理。
 
 同時也確認：全檔搜不到 `CLIB`、`SIGE`、`acsetup.cfg`、`Adventure Game Studio` 等 AGS 特徵字串，也就是**遊戲資料是壓縮在 overlay 裡的**，不能直接切出來。
 
@@ -58,6 +67,19 @@ docker run --rm -v "$PWD:/work" -w /work mm-cht:wine bash /work/deluxe-install.s
 | `German.tra` / `French.tra` / `Spanish.tra` | **原廠翻譯檔** |
 | `AGSflashlight.dll` | AGS 外掛（手電筒效果） |
 | `winsetup.exe`、`Uninstal.exe`、`autorun.*`、`manual*.htm` | 設定／安裝周邊 |
+
+## 改用 v1.4 多語版
+
+手上兩個安裝器裝出來的是不同版本：
+
+| 安裝器 | `Maniac.exe` | ScummVM 偵測 | 翻譯檔 |
+|---|---|---|---|
+| `manicmdsetup.exe` | 9 395 050 | v1.05 Multi | 德／法／西 3 份 |
+| `Maniac-Mansion-Deluxe_Win_EN-FR-ES-DE-IT.exe` | 10 409 172 | v1.4 | **14 份**（含俄文、保加利亞文） |
+
+定案用 **v1.4**：字串多（原文聯集 1219 行 vs 1131）、翻譯樣本多，而且**俄文與保加利亞文的存在證明這款遊戲的字型本來就吃非拉丁字集**。
+
+順帶一提，俄文版的 `TextOpts` 是 `(-1, -1, -1)`，也就是**沒有**切換字型槽——它靠的是遊戲內建字型在 0x80–0xFF 已經畫好西里爾字母。這條路對中文不適用（1000 多個漢字塞不進 256 個碼位），所以中文得走下一節的 UTF-8 + TTF。
 
 ## `.tra` 已經把可翻譯字串集送到手上
 
@@ -105,13 +127,29 @@ python3 tra_codec.py build zh.tsv -o Chinese.tra --utf8
 1. **翻譯檔可以自己宣告編碼。** `init_translation()` 讀 `StrOptions["encoding"]`，值是 `utf-8` 就 `set_uformat(U_UTF8)`——**這個判斷與遊戲本身的版本無關**，所以 2004 年的 AGS 2.x 遊戲也能靠這個 hint 走 UTF-8 文字路徑。字典的鍵維持原文的單位元組編碼，引擎有對應的 mixed-encoding 處理。`tra_codec.py --utf8` 就是在寫這個區塊（新式字串 ID 區塊 `ext_sopts`）。
 2. **TTF 可以用鬆散檔覆蓋內建點陣字。** `fonts.cpp` 載入字型時**先試 `agsfnt%d.ttf`**，失敗才回頭找 `agsfnt%d.wfn`（`ttf_font_renderer.cpp:121`、`wfn_font_renderer.cpp:124`）。所以把一份中文 TTF 放在遊戲目錄下命名成對應的槽位，就能取代原本的英文點陣字。
 
-也就是說 Deluxe 這條線**目前看起來不需要引擎修補**，與 SCUMM v2 那邊完全相反。但這兩點都還只是讀碼得到的結論，**尚未實機驗證**——下一步就是拿一小段試譯跑 ScummVM 的 AGS 引擎確認。
+**已實機驗證成立。** 45 行小樣試譯 + 一份 CJK 字型丟進遊戲目錄，ScummVM 的 AGS 引擎直接把繁體中文畫出來：
+
+```
+Translation initialized: Chinese (format: utf-8)
+```
+
+畫面上「我確定看到佛瑞德博士把珊蒂帶進來。」「現在只能靠我們把她救出來。」逐字正確，沒有亂碼。**Deluxe 這條線不需要修引擎**，與 SCUMM v2 那邊完全相反。
+
+實作細節：
+
+* **翻譯的選取**：在遊戲目錄放一個 `acsetup.cfg`，內容 `[language]` / `translation=Chinese`（對應 `Chinese.tra`）。ScummVM 的 `config.cpp` 讀的就是這個鍵；命令列 `--language=` 那條路要求 `.tra` 檔名包含語言描述，繞比較多。
+* **字型**：把 CJK 字型檔複製成 `agsfnt0.ttf` … `agsfnt4.ttf` 放遊戲目錄即可覆蓋內建點陣字。`.ttc` 也能直接吃（FreeType 會取第一個 face）。
+* **一個無害的警告**：`UTF-8 translation in the ASCII/ANSI game, but no encoding hint for TRA keys conversion`。字典的鍵（英文原文）若含重音字元才需要這個 hint，本作的鍵是純 ASCII，所以不影響；之後補一個 `gameencoding` 提示可以清掉。
+
+**還沒解決的問題：字太小。** AGS 的字型槽在 2.x 遊戲裡沒有 size 欄位，`ttf_font_renderer.cpp` 因此走 `if (fontSize <= 0) fontSize = 8;` 這條相容性分支，中文就以 8px em 渲染，筆畫細、字距擠。兩個可走的方向：
+
+1. 用 fontTools 把字型的 `unitsPerEm` 改小（或等比放大字形輪廓），讓引擎要求的 8px 實際渲染成 14–16px——純資料，不動引擎。
+2. 把倚天 16×15 點陣轉成內嵌點陣的 TTF，和 SCUMM 那邊的視覺一致。但 alfont 走的是輪廓渲染，內嵌點陣不一定會被採用，要先驗。
 
 ## 待辦
 
-1. 實機驗證上面兩點：小樣中文 `.tra` + 一份中文 TTF → 看是否正確顯示、行寬與換行是否合理。
-   （我們自編的 ScummVM 目前是 `--disable-all-engines --enable-engine=scumm`，要另外編一份含 AGS 引擎的。）
-2. 決定字型：AGS 的字型槽有大小設定，中文在低解析度下要挑點陣感清楚的；必要時把倚天 16×15 轉成 TTF 內嵌點陣。
-3. 翻譯 1131 行：譯名沿用 `docs/10-glossary.md`，台詞獨立翻譯（Deluxe 有重寫與新增內容，不能直接套 v2 譯文）。
+1. **字型放大**（上一節的方向 1），把中文調到可讀的尺寸再定案。
+2. 翻譯 1219 行：譯名沿用 `docs/10-glossary.md`，台詞獨立翻譯（Deluxe 有重寫與新增內容，不能直接套 v2 譯文）。
+3. 補 `gameencoding` hint，清掉 TRA keys 的警告。
 4. 產出物放在本 repo 的 `deluxe/`；**遊戲資料與原廠 `.tra` 不入公開 repo**。
 5. 待確認的版權問題：`.tra` 的鍵一定是英文原文，等於中文譯檔裡會夾帶完整英文台詞。要不要放上公開 repo，先問過再說。
