@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+# 遊戲資料、字型產出、二進位包一律不入版控
+*.LFL
+*.fnt
+*.ROM
+dist-all/
+game-orig/
+game-cht/

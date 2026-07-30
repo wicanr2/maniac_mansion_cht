@@ -1,0 +1,108 @@
+diff --git a/src/ScummRp/block.cpp b/src/ScummRp/block.cpp
+index bcd096f..8f9870c 100644
+--- a/src/ScummRp/block.cpp
++++ b/src/ScummRp/block.cpp
+@@ -877,13 +877,17 @@ TreeBlock *IndexFile::nextBlock()
+ LFLFile::LFLFile(const char *path, int opts, BackUp &bak, int id, byte xorKey) :
+     BlocksFile(path, opts, bak, id, MKTAG2('L','F'), xorKey), RoomPack()
+ {
++#ifndef SCUMMTR_KEEP_DANGLING_INDEX_ENTRIES
+ 	RoomPack::_eraseOffsetsInRange((byte)_id, _file->size(), 0xFFFFFFFF);
++#endif
+ }
+ 
+ LFLFile::LFLFile(const char *path, int opts, int id, byte xorKey) :
+     BlocksFile(path, opts, id, MKTAG2('L','F'), xorKey), RoomPack()
+ {
++#ifndef SCUMMTR_KEEP_DANGLING_INDEX_ENTRIES
+ 	RoomPack::_eraseOffsetsInRange((byte)_id, _file->size(), 0xFFFFFFFF);
++#endif
+ }
+ 
+ LFLFile::~LFLFile()
+@@ -1407,13 +1411,17 @@ OldIndexFileV3::~OldIndexFileV3()
+ OldLFLFile::OldLFLFile(const char *path, int opts, BackUp &bak, int id, byte xorKey) :
+     LFLFile(path, opts, bak, id, xorKey), _blocks()
+ {
++#ifndef SCUMMTR_KEEP_DANGLING_INDEX_ENTRIES
+ 	RoomPack::_eraseOffsetsInRange((byte)_id, _file->size(), 0x0000FFFF);
++#endif
+ }
+ 
+ OldLFLFile::OldLFLFile(const char *path, int opts, int id, byte xorKey) :
+     LFLFile(path, opts, id, xorKey), _blocks()
+ {
++#ifndef SCUMMTR_KEEP_DANGLING_INDEX_ENTRIES
+ 	RoomPack::_eraseOffsetsInRange((byte)_id, _file->size(), 0x0000FFFF);
++#endif
+ }
+ 
+ OldLFLFile::~OldLFLFile()
+@@ -2250,6 +2258,20 @@ void OldRoom::_updateOffset(int32 offsetToOffset, int32 minOffset, int32 shift,
+ 
+ void OldRoom::_cleanup()
+ {
++#ifdef SCUMMTR_PRESERVE_AMBIGUOUS_OI
++	// 純文字翻譯用途：不要清掉「無法判定歸屬」的 OI 位移。
++	//
++	// _findMostLikelyOIId() 對多個物件共用同一份影像（或整室物件都沒有自己的
++	// 影像、OI 位移一律指向影像區結尾）的情形無法判定歸屬，會標成 _oiId[i] == -1。
++	// 原本的處理是把這些位移寫成 0，但那是不可逆的破壞：_subblockUpdated() 後面
++	// 本來就會把 OI/OC 全表跟著 sizeDiff 重定位（見該函式尾端的迴圈），所以只要
++	// 保留原值，位移仍然正確。
++	//
++	// 這道保護原本擋的是「使用者匯入改過的物件影像」時 OI 歸屬判斷錯誤的情境；
++	// ScummTr 的文字回填從不動 OI 區塊，因此保留原值嚴格優於清零。
++	// 實測：Maniac Mansion V2（Enhanced DOS）英文原封回填後 40 個 LFL 全部 byte-perfect。
++	return;
++#else
+ 	// Erase bad OI offsets
+ 	// _findMostLikelyOIId has to be perfect before using this
+ 	for (int i = 0; i < (int)_oiSize.size(); ++i)
+@@ -2260,6 +2282,7 @@ void OldRoom::_cleanup()
+ 			_file->putLE16((uint16)0);
+ 		}
+ 	}
++#endif
+ }
+ 
+ void OldRoom::_subblockUpdated(TreeBlock &subblock, int32 sizeDiff)
+diff --git a/src/ScummTr/text.cpp b/src/ScummTr/text.cpp
+index ccb01e2..66060be 100644
+--- a/src/ScummTr/text.cpp
++++ b/src/ScummTr/text.cpp
+@@ -749,6 +749,17 @@ void Text::_spaceCharToBit(std::string &s) const
+ 	last = s.size() - 1;
+ 	for (j = i = 0; i < last; ++i)
+ 	{
++#ifdef SCUMMTR_CJK_CUSTOM_CODESPACE
++		// 繁中化自訂碼空間：首碼 0x88-0x9F、尾碼 0xA1-0xFD，兩個 byte 原樣通過，
++		// 不參與空白壓縮。SCUMM v2 的壓縮碼是「可列印 ASCII | 0x80」= 0xA0-0xFE，
++		// 與首碼範圍不重疊，所以引擎端能無歧義還原。
++		if ((byte)s[i] >= 0x88 && (byte)s[i] <= 0x9F && i + 1 <= last)
++		{
++			s[j++] = s[i];
++			s[j++] = s[++i];
++			continue;
++		}
++#endif
+ 		if ((byte)s[i] & 0x80)
+ 			throw Text::Error(xsprintf("char > 0x80 in line %i", _lineCount));
+ 
+@@ -779,6 +790,16 @@ void Text::_spaceBitToChar(std::string &s) const
+ 	s2.reserve(2 * size);
+ 	for (size_t i = 0; i < size; ++i)
+ 	{
++#ifdef SCUMMTR_CJK_CUSTOM_CODESPACE
++		// 繁中化自訂碼空間的雙位元組原樣輸出，不當成空白壓縮碼展開
++		if ((byte)s[i] >= 0x88 && (byte)s[i] <= 0x9F && i + 1 < size)
++		{
++			s2 += s[i];
++			s2 += s[i + 1];
++			++i;
++			continue;
++		}
++#endif
+ 		if ((byte)s[i] & 0x80)
+ 		{
+ 			s2 += s[i] & 0x7F;
