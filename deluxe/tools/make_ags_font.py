@@ -56,6 +56,8 @@ def main():
     ap.add_argument("--scale", type=float, default=2.0,
                     help="字要放大幾倍（做法是把 unitsPerEm 除以這個值）")
     ap.add_argument("--subset-from", help="譯文 TSV；有給就只留用到的字")
+    ap.add_argument("--fail-on-missing", action="store_true",
+                    help="譯文用到字型沒有的字就直接失敗（預設只警告）")
     a = ap.parse_args()
 
     font = load_font(a.font, a.face)
@@ -64,6 +66,16 @@ def main():
     if a.subset_from:
         from fontTools import subset
         used = chars_from_tsv(a.subset_from)
+        # 字型沒有的字會被 FreeType 畫成 .notdef（空心方框），畫面上看起來像「有字但不對」，
+        # 而且不會有任何錯誤訊息。實際踩過的例子：⋯（U+22EF，數學用省略號）在 WQY 裡不存在，
+        # 288 處對白開頭全變成方框；換成中文標準的「…」（U+2026）才有字。
+        missing = sorted(c for c in used
+                         if c.strip() and font.getBestCmap().get(ord(c)) is None)
+        if missing:
+            print("字型缺字：" + " ".join(f"U+{ord(c):04X}({c})" for c in missing),
+                  file=sys.stderr)
+            if a.fail_on_missing:
+                raise SystemExit(f"{len(missing)} 個字在字型裡不存在，會畫成空心方框")
         used.update(chr(c) for c in range(0x20, 0x7F))     # 英數與標點一定要留
         opt = subset.Options()
         opt.layout_features = ["*"]
