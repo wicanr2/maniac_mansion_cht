@@ -1,4 +1,4 @@
-# 瘋狂大樓 繁體中文化（Maniac Mansion / SCUMM v2）
+# 瘋狂大樓 繁體中文化（Maniac Mansion，SCUMM v2 + Deluxe 重製版）
 
 ![遊戲畫面](screenshots/ingame-zh.png)
 
@@ -10,7 +10,9 @@
 
 ![開場對白](screenshots/dialog-zh.png)
 
-這個專案把 1988 年的 Enhanced DOS 版（SCUMM v2）完整繁體中文化：**1139 行文字、15 個指令、物件名、選角資料、片頭與結局全部中文**，字型用**倚天中文系統的 16×15 原生點陣字**，畫面拉到 640×400 讓它放得進去，透過 ScummVM 執行。
+這個 repo 收了**兩套**中文化：1988 年的原版，以及 2004 年的同人重製版 Deluxe。
+
+原版部分把 Enhanced DOS 版（SCUMM v2）完整繁體中文化：**1139 行文字、15 個指令、物件名、選角資料、片頭與結局全部中文**，字型用**倚天中文系統的 16×15 原生點陣字**，畫面拉到 640×400 讓它放得進去，透過 ScummVM 執行。
 
 ![指令列](screenshots/verbbar-zh.png)
 
@@ -23,14 +25,16 @@
 repo 裡**沒有遊戲資料**，只有讓你自己重建中文版所需的東西：
 
 ```
-patches/       ScummVM 與 ScummTR 的修補（共 178 行新增）
-tools/         碼表編解碼、倚天字型烘製、譯文合併
-translations/  1139 行繁中譯文
-cht_table.json 1000 字的自訂碼表
-docs/          技術文件
+patches/            ScummVM 與 ScummTR 的修補（共 191 行新增）
+tools/              碼表編解碼、倚天字型烘製、譯文合併
+translations/       1139 行繁中譯文（SCUMM v2）
+cht_table.json      1000 字的自訂碼表
+deluxe/tools/       Deluxe 用：.tra 編解碼、字型精簡、批次檢查
+translations/deluxe/ 1219 行繁中譯文（Deluxe）
+docs/               技術文件
 ```
 
-重建步驟見 [`docs/30-pipeline.md`](docs/30-pipeline.md)。你需要自備 Enhanced DOS 版（v2）的 `00.LFL … 53.LFL`。
+重建步驟見 [`docs/30-pipeline.md`](docs/30-pipeline.md)。你需要自備 Enhanced DOS 版（v2）的 `00.LFL … 53.LFL`；Deluxe 的部分見 [`docs/40-deluxe.md`](docs/40-deluxe.md)。
 
 ## 技術上為什麼這款特別麻煩
 
@@ -104,11 +108,34 @@ docs/          技術文件
 
 另外有**一句台詞抽不出來**：07.LFL 的 script #59 在 `stopScript(0)` 之後接了一段不可及的字串常數 `"It's already full."`。ScummTR 與 descumm 在完全相同的位置失步，所以那是原版資料的遺留物、不是工具的問題。詳見 [`docs/00-engine-verification.md`](docs/00-engine-verification.md)。
 
+## Deluxe 重製版也一起中文化了
+
+![Deluxe 中文](screenshots/deluxe-title-zh.png)
+
+2004 年 Lucasfan Games 用 **AGS**（Adventure Game Studio）重製的 *Maniac Mansion Deluxe*，畫面重畫成 VGA、加了新房間與新台詞。它不是 SCUMM，但 ScummVM 2.6 起內建 AGS 引擎，所以一樣掛在 ScummVM 下跑。
+
+**1219 行全部翻完**，而且幾乎不必動引擎——原因是 AGS 自己就有翻譯機制，而且這款遊戲隨片附了德／法／西等 14 份 `.tra`：
+
+* `.tra` 的鍵就是英文原文，所以**不需要 AGS Editor 也拿得到完整字串集**。
+* 翻譯檔可以自己宣告 `encoding=utf-8`，ScummVM 讀到就切 UTF-8 文字模式，**與遊戲版本無關**——2004 年的 AGS 2.x 老遊戲也吃這套。
+* 字型載入時先試 `agsfnt%d.ttf` 再退回內建點陣字，所以把中文 TTF 放進遊戲目錄就能覆蓋。
+
+唯一擋住的是尺寸：AGS 3.0 以前的遊戲資料沒有字型大小欄位，替換進去的 TTF 一律以 8px 載入，中文糊成一團。試過用 fontTools 改 `unitsPerEm` 讓字形放大——字形與推進寬確實一起放大了（用 FreeType 量過），但**行距取的是「名目高度」而不是實際字形高度**，於是上下兩行相疊。名目尺寸這個數字只有引擎給得出來，所以補了 13 行讓 config 可以覆寫它。
+
+驗證過程也抓到一個純中文才會遇到的坑：譯文裡用的省略號「⋯」（U+22EF）在 WQY Zen Hei 裡根本沒有字形，FreeType 照畫不誤——畫成空心方框，而且不報錯。288 處對白開頭全中招。換成中文標準的「……」（U+2026）就好了，並把「字型缺字」加進建置檢查。
+
+![Deluxe 對白](screenshots/deluxe-dialog-zh.png)
+
+一個誠實的限制：Deluxe 指令列那九個按鈕（Give / PICKUP / USE …）是**手繪 sprite**，存在 AGS 的資料檔裡，翻譯機制碰不到，所以維持英文。真正描述「你要做什麼」的那條句子列已經是中文（上圖的「查看 標示」）。要換掉按鈕得解 CLIB 改 sprite，是另一個規模的子專案。
+
+細節見 [`docs/40-deluxe.md`](docs/40-deluxe.md)，現況與已知限制見 [`docs/50-status.md`](docs/50-status.md)。
+
 ## 授權與版權
 
 * 本專案自己的產出（patch、工具、譯文、文件）採 MIT。
 * ScummVM 為 GPLv3+，ScummTR 為 MIT；散布修改過的二進位檔時必須一併附上對應原始碼。
 * 《Maniac Mansion》的所有權利屬於原權利人。本 repo **不含**任何遊戲資料、美術或音樂；截圖僅用於說明中文化成果。
+* *Maniac Mansion Deluxe* 是 Lucasfan Games 的同人重製版，版權屬其作者。本 repo 同樣不含其遊戲資料。
 * 說明書掃描件由「骨灰集散地」說明書補完計劃提供，依其要求：請勿加上其他符號或用於牟利。
 
 ## 參考

@@ -124,3 +124,51 @@ DISPLAY=:99 import -window root shot.png
 | 字幕多出一個怪字並被截斷 | 撞到空白壓縮碼 → 碼空間首碼範圍 |
 | 大批中文缺字（畫面空白或全是同一個字） | 漏帶 `SPCFONT.15`，或 Big5 分區索引寫錯 —— 用「`STDFONT.15` 的 idx=0 必須是『一』」當 oracle |
 | import 中途失敗後再跑報「already exists」 | 殘留 `*.LFL~~scummio-tmp`，先 `rm -f *scummio-tmp` 再從原版重新複製 LFL |
+
+## Deluxe（AGS 重製版）的重建流程
+
+Deluxe 走的是完全不同的產線（`.tra` 翻譯檔 + TTF），工具在 `deluxe/tools/`：
+
+```bash
+# 1. 取遊戲資料：wine 裝一次 v1.4 多語版（見 40-deluxe.md）
+#    裝完在 C:\Program Files (x86)\LucasFan Games\MMD
+
+# 2. 抽原文（.tra 的鍵就是英文原文，14 份取聯集 = 1219 行）
+python3 deluxe/tools/tra_codec.py keys game-orig-14/*.tra -o dumps/english14.txt
+
+# 3. 檢查分批譯文（鍵對位／行數／token／後綴／字元／編碼，七項）
+python3 deluxe/tools/check_batches.py dumps/english14.txt translations/deluxe
+
+# 4. 產生 Chinese.tra（--utf8 會寫入 encoding hint）
+cat translations/deluxe/b*.tsv > dumps/zh_all.tsv
+python3 deluxe/tools/tra_codec.py build dumps/zh_all.tsv -o game-cht/Chinese.tra --utf8
+
+# 5. 精簡字型（--fail-on-missing 會擋下缺字，例如 U+22EF）
+python3 deluxe/tools/make_ags_font.py /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc \
+    -o agsfnt-zh.ttf --scale 1 --subset-from dumps/zh_all.tsv --fail-on-missing
+for i in 0 1 2 3 4 5 6 7; do cp agsfnt-zh.ttf game-cht/agsfnt$i.ttf; done
+
+# 6. 指定翻譯 + 字型尺寸
+printf '[language]\ntranslation=Chinese\n' > game-cht/acsetup.cfg
+printf '[scummvm]\nags_ttf_font_size=16\n' > scummvm.ini
+
+# 7. 跑起來（binary 需含 AGS 引擎）
+scummvm -p game-cht --auto-detect --config=scummvm.ini
+```
+
+`build-ags` 這份建置同時開了 SCUMM 與 AGS 兩個引擎，一支 binary 兩邊都能跑：
+
+```bash
+../configure --backend=sdl --enable-release --disable-debug \
+  --disable-all-engines --enable-engine=ags --enable-engine=scumm
+```
+
+### Deluxe 的驗收項目
+
+- [ ] 啟動 log 出現 `Translation initialized: Chinese (format: utf-8)`
+- [ ] 標題／選角的提示與人物簡介是中文且不重疊
+- [ ] 開場對白逐句中文，長句會自動折行
+- [ ] 句子列組句正確（例如「查看 標示」）
+- [ ] 動作回應是中文（查看告示牌 →「警告！！」）
+- [ ] **省略號等標點畫得出來**（畫成空心方框 = 字型缺字，回頭看 `--fail-on-missing`）
+- [ ] 指令按鈕維持英文是已知限制（sprite，不是文字）
