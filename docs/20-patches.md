@@ -3,6 +3,7 @@
 | 檔案 | 對象 | 規模 |
 |---|---|---|
 | `patches/scummvm-maniac-zhtw.patch` | ScummVM（`engines/scumm/`，4 個檔） | +134 / −3 |
+| `patches/scummvm-ags-cjk-fontsize.patch` | ScummVM（`engines/ags/`，1 個檔；Deluxe 用） | +13 / −0 |
 | `patches/scummtr-maniacv2-lossless.patch` | ScummTR（`src/ScummRp/`、`src/ScummTr/`） | +44 / −0 |
 
 ScummTR 那份的三處改動都以巨集開關包住，預設行為與上游完全相同。
@@ -98,6 +99,12 @@ c &= 0x7f;                       // ← 中文首碼會在這裡被砍掉
 ### `verbs.cpp`（1 處）
 
 11. **`redrawV2Inventory()` 的雙位元組安全截字** —— 原本 `strncpy(msg, tmp, maxChars)` 是按 byte 截斷，可能把雙位元組字砍成半個（只留首碼）→ 畫面上出現一個亂碼字。改成往前掃到最後一個完整的字再切。
+
+## ScummVM／AGS（Deluxe 用，1 個檔）
+
+12. **`ttf_font_renderer.cpp` 允許用 config 覆寫 TTF 名目尺寸** —— AGS 3.0 以前的遊戲資料裡字型槽沒有 size 欄位，替換進去的 TTF 一律以 8px 載入，中文無法閱讀。這個「名目尺寸」同時決定行距（`FontMetrics.NominalHeight`），所以**不能靠改字型檔繞過**：把字型的 `unitsPerEm` 改小確實會讓字形與推進寬一起放大（用 FreeType 量過），但行距仍停在 8px，上下兩行必疊。
+
+    修補只做一件事：`ags_ttf_font_size` 這個 config 鍵有設就覆寫，沒設完全維持原行為。Deluxe 用 16。詳見 `40-deluxe.md`。
 
 ## ScummTR（2 個檔）
 

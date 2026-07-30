@@ -1,0 +1,31 @@
+diff --git a/engines/ags/shared/font/ttf_font_renderer.cpp b/engines/ags/shared/font/ttf_font_renderer.cpp
+index fca45307..7326aa29 100644
+--- a/engines/ags/shared/font/ttf_font_renderer.cpp
++++ b/engines/ags/shared/font/ttf_font_renderer.cpp
+@@ -19,6 +19,7 @@
+  *
+  */
+ 
++#include "common/config-manager.h"
+ #include "ags/shared/font/ttf_font_renderer.h"
+ #include "ags/lib/alfont/alfont.h"
+ #include "ags/shared/core/platform.h"
+@@ -126,6 +127,18 @@ bool TTFFontRenderer::LoadFromDiskEx(int fontNumber, int fontSize, String *src_f
+ 	if (f_params.SizeMultiplier > 1)
+ 		fontSize *= f_params.SizeMultiplier;
+ 
++	// Pre-3.x games have no font size in their data, so a substituted TTF is always
++	// loaded at the 8px compatibility size above. That is unreadable for CJK glyphs,
++	// and the nominal size also drives line spacing, so it cannot be worked around
++	// by scaling the font file itself. Allow the config to override it; unset keeps
++	// the original behaviour.
++	if (ConfMan.hasKey("ags_ttf_font_size")) {
++		int overrideSize = ConfMan.getInt("ags_ttf_font_size");
++		if (overrideSize > 0)
++			fontSize = overrideSize;
++	}
++	debug(1, "AGS: loading TTF font %d at size %d", fontNumber, fontSize);
++
+ 	ALFONT_FONT *alfptr = LoadTTF(filename, fontSize,
+ 		GetAlfontFlags(f_params.LoadMode));
+ 	if (!alfptr)

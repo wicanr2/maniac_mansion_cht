@@ -141,15 +141,27 @@ Translation initialized: Chinese (format: utf-8)
 * **字型**：把 CJK 字型檔複製成 `agsfnt0.ttf` … `agsfnt4.ttf` 放遊戲目錄即可覆蓋內建點陣字。`.ttc` 也能直接吃（FreeType 會取第一個 face）。
 * **一個無害的警告**：`UTF-8 translation in the ASCII/ANSI game, but no encoding hint for TRA keys conversion`。字典的鍵（英文原文）若含重音字元才需要這個 hint，本作的鍵是純 ASCII，所以不影響；之後補一個 `gameencoding` 提示可以清掉。
 
-**還沒解決的問題：字太小。** AGS 的字型槽在 2.x 遊戲裡沒有 size 欄位，`ttf_font_renderer.cpp` 因此走 `if (fontSize <= 0) fontSize = 8;` 這條相容性分支，中文就以 8px em 渲染，筆畫細、字距擠。兩個可走的方向：
+### 字太小：純資料改不動，最後加了 13 行引擎修補
 
-1. 用 fontTools 把字型的 `unitsPerEm` 改小（或等比放大字形輪廓），讓引擎要求的 8px 實際渲染成 14–16px——純資料，不動引擎。
-2. 把倚天 16×15 點陣轉成內嵌點陣的 TTF，和 SCUMM 那邊的視覺一致。但 alfont 走的是輪廓渲染，內嵌點陣不一定會被採用，要先驗。
+AGS 的字型槽在 2.x 遊戲裡沒有 size 欄位，`ttf_font_renderer.cpp` 因此走 `if (fontSize <= 0) fontSize = 8;` 這條相容性分支，中文就以 8px em 渲染，細得像雜訊。
+
+先試了純資料的作法：用 fontTools 把 `unitsPerEm` 改小（字形座標不動），同樣的 8px em 就會畫出比例上更大的字。**字形確實變大了，但版面壞掉**——字互相疊、上下兩行也疊。
+
+拆下去看原因（實測過，不是猜的）：
+
+* 字型這邊完全正常。用 FreeType 直接量，`upem 1024 → 512` 之後在 8px ppem 下，「我」的 advance 從 8px 變 16px、字模從 8×9 變 16×17，**推進寬與字形是一起放大的**。
+* 壞的是**行距**。`alfont_set_font_size_ex()` 被 AGS 以 `ALFONT_FLG_SELECT_NOMINAL_SZ` 呼叫（「always choose the first result」），所以 `face_h` 就是要求的那個數字 8；而行距與 `FontMetrics.NominalHeight` 都取自這個**名目高度**，不是實際字形高度。字形放大兩倍、行距還是 8px → 上下兩行必疊。
+
+也就是說「名目尺寸」這個數字同時決定了渲染尺寸與行距，**只有引擎那邊能改**。所以加了一段 13 行的修補：`ags_ttf_font_size` 這個 config 鍵有設就覆寫，沒設就完全維持原行為（`patches/scummvm-ags-cjk-fontsize.patch`）。
+
+實測 12 / 16 / 20 三種尺寸，**16 最合**：兩行不重疊、字距正常，與遊戲原本約 10px 的英文並置也不突兀。設定方式是遊戲的 ScummVM 設定加一行 `ags_ttf_font_size=16`。
+
+字型本身就用**沒有動過 upem 的原字型**，再用 `make_ags_font.py --subset-from` 依譯文精簡（小樣 292 字 → 69 KB，而不是整份 14 MB）。
 
 ## 待辦
 
-1. **字型放大**（上一節的方向 1），把中文調到可讀的尺寸再定案。
-2. 翻譯 1219 行：譯名沿用 `docs/10-glossary.md`，台詞獨立翻譯（Deluxe 有重寫與新增內容，不能直接套 v2 譯文）。
-3. 補 `gameencoding` hint，清掉 TRA keys 的警告。
+1. 翻譯 1219 行：譯名沿用 `docs/10-glossary.md`，台詞獨立翻譯（Deluxe 有重寫與新增內容，不能直接套 v2 譯文）。
+2. 補 `gameencoding` hint，清掉 TRA keys 的警告。
+3. 發佈包要換成**同時含 SCUMM 與 AGS 兩個引擎**的 binary（目前 `dist-all/` 那份是 `--enable-engine=scumm` 而已）。
 4. 產出物放在本 repo 的 `deluxe/`；**遊戲資料與原廠 `.tra` 不入公開 repo**。
 5. 待確認的版權問題：`.tra` 的鍵一定是英文原文，等於中文譯檔裡會夾帶完整英文台詞。要不要放上公開 repo，先問過再說。
