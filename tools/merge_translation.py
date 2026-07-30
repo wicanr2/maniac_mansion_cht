@@ -67,13 +67,6 @@ def main():
             untouched += 1
             continue
         want = len(orig)                     # 原文是 latin-1，長度即位元組數
-        # [例外] 指令列（script 164 的 15 個指令）不補到原長度。
-        # 中文指令一律補到 5 bytes，讓 drawVerb 算出的欄寬
-        # `curRect.right = left + (6-1)*8 = left + 40` 剛好等於 2 列排版的欄距，
-        # 相鄰指令的可點範圍才不會互相重疊；引擎端也是用「資源長度 == 6」
-        # 來認出「這是中文化過的指令」才套用兩列版面。
-        if "SCv2#0164" in c:
-            continue
         if orig.endswith("@"):
             ch = "@"
         elif orig.endswith(" ") and "](7A)" in c:

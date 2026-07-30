@@ -81,10 +81,11 @@ def encode_line(text, table, lineno=None):
 # 才呼叫），太長的一行會直接在畫面右緣被截掉。所以斷行必須在譯文裡做完：
 # 對白畫在畫面左上 (0,0)、往右長，可用寬度 320px；中文 12px/字、ASCII 8px/字。
 # 控制碼 \001 = 換行、\003 = 等待點擊（分頁），兩者都會把行寬歸零。
-# printChar 的裁切條件是 `_left + width > _right + 1`（_right = 319），所以最後一個
-# 字元的起點可以到 312：英文剛好放得下 40 字（= 320px），中文放得下 26 字（= 312px）。
+# printChar 的裁切條件是 `_left + width > _right + 1`（_right = 319），最後一個字元的
+# 起點可以到 312。這裡用的是**邏輯**像素：hi-res 模式下中文字模雖然是 16x15，但畫在
+# 2 倍的文字表面上，邏輯寬只佔 8（見 patch 說明），與 ASCII 相同，所以一行同樣是 40 字。
 LINE_WIDTH = 320
-CJK_W, ASCII_W = 12, 8
+CJK_W, ASCII_W = 8, 8
 
 
 def _tokens(text):

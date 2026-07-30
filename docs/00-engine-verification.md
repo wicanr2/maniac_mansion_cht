@@ -34,16 +34,24 @@
 - `setupCharsetRenderer()`：`_game.version <= 2` 且非 NES → **`CharsetRendererV2`**，它繼承 `CharsetRendererV3`。
 - 雙位元組字的取字與繪製路徑在 `CharsetRendererV3::printChar()` 已存在且不分版本：
   `charPtr = (_useCJKMode && chr > 127) ? get2byteCharPtr(chr) : _fontPtr + chr * 8;`
-- ZH_CHN 的字型規格：`_2byteWidth = _2byteHeight = 12`、`_newLineCharacter = 0x21`，索引公式 `idx = (lead-0xA1)*94 + (trail-0xA1)`（GB2312 EUC）。
+- ZH_CHN 原本的字型規格：`_2byteWidth = _2byteHeight = 12`、`_newLineCharacter = 0x21`，索引公式 `idx = (lead-0xA1)*94 + (trail-0xA1)`（GB2312 EUC）。本專案改成 **16×15 + `_textSurfaceMultiplier = 2`** 與自訂索引，理由見下。
 - `is2ByteCharacter(ZH_CHN, c)` 的判定是 **`c >= 0x80`**，也就是任何高位 byte 都會被當成雙位元組首碼。這是「譯文不可混入單一 latin-1 高位字元」的引擎層根據。
 
-尺寸相關的硬編碼有兩處會把 12×12 中文截成噪點，且**其中一處是 v2 專屬、Zak(v3) 沒踩到的**：
+尺寸相關的硬編碼有三處會把中文截成噪點，且**其中一處是 v2 專屬、Zak(v3) 沒踩到的**：
 
 | 位置 | 現況 | 影響 |
 |---|---|---|
 | `CharsetRendererV3::getDrawHeightIntern()` | 固定 `return 8` | 中文字高被截成 8 列 |
 | `CharsetRendererV3::getDrawWidthIntern()` | 轉呼叫 `getCharWidth()` | 見下 |
 | **`CharsetRendererV2::getCharWidth()`** | 固定 `return 8`（覆寫了 V3） | 中文字寬算成 8，字距全錯 |
+
+### 為什麼最後走 hi-res（640×400）而不是 12×12
+
+先做過 12×12（WQY Zen Hei Sharp embedded bitmap）的版本，能跑，但為了把 12px 的字塞進 v2 的版面，被迫改動五處版面邏輯：指令列從 5×3 重排成 2 列、物品欄列距、句子列清除高度、`getFontHeight()` 的 ASCII／CJK 分流、以及超出文字區時的自動分頁。
+
+換成「文字表面放大 2 倍 + 倚天 16×15 原生點陣字」之後，**16×15 的字模只佔 8×7.5 個邏輯像素**，與原版 8×8 的 ASCII 幾乎同尺寸，那五處全部撤掉。ScummVM 的 SCI 引擎中文化走的是同一條路（`GFX_SCREEN_UPSCALED_640x400`）。
+
+既有結論說「DOS 版 SCUMM 設 `_textSurfaceMultiplier = 2` 會雪花」——這是真的，成因在 `drawStripToScreen()`：合成迴圈跑 2× 的目的像素數，卻線性讀取 1× 的底圖。缺的只是「底圖也要 2× nearest 放大」這一步，補上就成立。這條路徑跳過 `postProcessDOSGraphics()`，因此與 CGA / Hercules render mode 不相容（預設 EGA/VGA 下該函式本來就立刻 return）。
 
 ## U3：scummtr 對 v2 的可逆性（原本不通，已解）
 
@@ -103,10 +111,11 @@ for (int i = 0; i < (int)_oiSize.size() * 2; ++i)
 
 ### 修補與驗收
 
-`patches/scummtr-maniacv2-lossless.patch`（24 行新增），兩處都以巨集開關包住，預設行為不變：
+`patches/scummtr-maniacv2-lossless.patch`（44 行新增），三處都以巨集開關包住，預設行為不變：
 
 - `SCUMMTR_PRESERVE_AMBIGUOUS_OI` — `_cleanup()` 不清零。
 - `SCUMMTR_KEEP_DANGLING_INDEX_ENTRIES` — 建構時不抹死索引。
+- `SCUMMTR_CJK_CUSTOM_CODESPACE` — 空白壓縮／解壓讓自訂碼空間原樣通過（見 `20-patches.md` C）。
 
 建置：
 
@@ -139,7 +148,9 @@ Pull   Close   Pick up   New kid   Turn off
 Give   Read    What is   Use       Fix
 ```
 
-12px 中文放進 8px 列距需同步改 `drawVerb()` 與 `findVerbAtPos()`（只改前者會造成看到的 verb 與實際點到的 verb 錯列）。
+走 hi-res 之後這個排版**完全不必改**——中文 verb 的邏輯寬高與原版英文同級，`drawVerb()` 與 `findVerbAtPos()` 都維持上游原樣。（12×12 版本則必須同步改這兩個函式，只改前者會造成看到的 verb 與實際點到的 verb 錯列。）
+
+verb 名的資源長度另有一個陷阱：`redrawV2Inventory()` 之外，`drawVerb()` 用 `資源長度 - 1` 算可點擊範圍，所以譯文若補位到與原文等長，可點擊範圍才與畫面一致——`merge_translation.py` 對以 `@` 結尾的行做的就是這件事。
 
 ## U5：防拷
 
@@ -171,20 +182,23 @@ scummtr 與 descumm **在完全相同的位置失步**（`ERROR: do_room_ops_old
 | 項目 | 狀態 |
 |---|---|
 | ZH_CHN 路徑啟動 | ✅ 啟動 log 有 `Loading CJK Font`，偵測結果標示 `Chinese (Simplified)` |
-| 指令列 15 個全中文、兩列排版 | ✅ 兩列間距不重疊，完整留在原有 24px 區帶 |
+| 640×400 hi-res 畫面無雪花 | ✅ 原始美術 2× nearest 放大正常，補完 `drawStripToScreen()` 的底圖放大之後 |
+| 指令列 15 個全中文 | ✅ **維持原版 5 欄 × 3 列**，不重疊、不需重排 |
 | 句子列（指令 + 物件名組句） | ✅ 例如「拿起 信箱」「拿起 灌木叢」「走到 床」 |
 | 物件名 | ✅ 同上 |
 | 對白（含 `\003` 分頁） | ✅ 開場過場整段中文正確 |
-| 選角畫面人物簡介 | ✅ 改單行後完整顯示 |
-| 片頭字幕（純 ASCII）維持兩行 | ✅ 不需按鍵翻頁 |
+| 選角畫面人物簡介 | ✅ 單行完整顯示（與所有對白同一條 `print`／`drawString` 路徑） |
+| 片頭字幕（純 ASCII）維持兩行 | ✅ 16px 文字區內兩行都完整，不需按鍵翻頁 |
+| 前後兩則訊息不疊字 | ✅ 補上 `restoreCharsetBg()` 的文字表面清除之後 |
 | 無字元級亂碼 | ✅（修掉空白壓縮撞碼後） |
 | 無截字 | ✅ |
+| Big5 字形涵蓋 | ✅ 1000 字裡缺 1 字（`・` U+30FB，0.10%），以 WQY 同尺寸補 |
 | **物品欄中文** | ⚠️ **尚未取得可攜物品做視覺確認**。走的是與句子列相同的 `drawString`，加上本專案的雙位元組截字修補（只會把字串縮短，不會產生新字元）。仍應在實際遊玩時確認。 |
-- **U2 補充**：除了 `getDrawHeightIntern` 之外，v2 還有兩個高度／寬度相關的點是 v3 不會遇到的
-  —— `CharsetRendererV2::getCharWidth()` 固定回 8（覆寫了 V3），以及 `getFontHeight()` 在 CJK 模式一律回 13
-  會把「沒有中文的原版字幕」第二行擠出 16px 文字區。詳見 `20-patches.md` 第 5、6 項。
-- **新發現的第三道牆**：v2 腳本字串的空白壓縮會佔用高位元，且**控制碼也會被壓縮**
-  （`0x01–0x03 | 0x80` = `0x81–0x83`），碼空間首碼因此收窄到 `0x88–0x9F`。詳見 `20-patches.md`。
+
+補充兩點：
+
+- **U2 補充**：除了 `getDrawHeightIntern` 之外，v2 還有一個 v3 不會遇到的點 —— `CharsetRendererV2::getCharWidth()` 固定回 8（覆寫了 V3）。hi-res 下這個值剛好就是我們要的邏輯寬，所以不必改；12×12 版本則必須改。
+- **v2 專屬的第三道牆**：腳本字串的空白壓縮會佔用高位元，且**控制碼也會被壓縮**（`0x01–0x03 | 0x80` = `0x81–0x83`），碼空間首碼因此收窄到 `0x88–0x9F`。詳見 `20-patches.md`。
 
 ## 尚未驗證
 

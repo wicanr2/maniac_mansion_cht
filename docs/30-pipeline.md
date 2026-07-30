@@ -1,6 +1,9 @@
 # 從原版重建中文版
 
-需要自備《Maniac Mansion》Enhanced DOS 版（v2）的 `00.LFL … 53.LFL`。本 repo 不含遊戲資料。
+需要自備兩樣東西，本 repo 都不含：
+
+* 《Maniac Mansion》Enhanced DOS 版（v2）的 `00.LFL … 53.LFL`。
+* 倚天中文系統 3.53 的點陣字檔 `STDFONT.15`、`SPCFONT.15`、`SPCFSUPP.15`，放在 `font-src/`。**三個都要**——`STDFONT.15` 只有漢字，全形標點在 `SPCFONT.15` 裡（漏帶會讓「，。！？「」」全部缺字）。
 
 ## 環境
 
@@ -70,7 +73,7 @@ python3 tools/cht_codec.py dumps/mm_v2_zh.txt \
         -r dumps/mm_v2_raw.txt -c dumps/mm_v2_ctx.txt \
         -t cht_table.json -o dumps/scummtr_zh.txt
 
-python3 tools/build_cht_font.py cht_table.json \
+python3 tools/build_eten_font.py cht_table.json --eten-dir font-src --embolden \
         -o game-cht/mansiond/chinese_gb16x12.fnt --preview font-preview.png
 
 cd game-cht/mansiond && cp ../../dumps/scummtr_zh.txt scummtr.txt
@@ -79,9 +82,11 @@ rm -f *scummio-tmp && scummtr -g maniacv2 -r -w -if
 
 三個工具各自負責的事：
 
-* **`merge_translation.py`** —— 併批、對齊固定寬度（`@` 補位、verb 排版空白）、把寫成空行的譯文還原成原文（scummtr 不收空行）。指令列是例外：一律補到 5 bytes，不補到原長度。
+* **`merge_translation.py`** —— 併批、對齊固定寬度（`@` 補位、verb 排版空白）、把寫成空行的譯文還原成原文（scummtr 不收空行）。
 * **`cht_codec.py`** —— 配碼位、產 `cht_table.json`、編成 latin-1 + CRLF；順便做像素級斷行（只作用在對白行，純 ASCII 行一律不動）與位元組自檢。
-* **`build_cht_font.py`** —— 依碼表烘 `chinese_gb16x12.fnt`（2232 字位 × 24 bytes = 53568 bytes）。
+* **`build_eten_font.py`** —— 依碼表把倚天字形重排成 `chinese_gb16x12.fnt`（2232 字位 × 30 bytes = 66960 bytes）。stride 與倚天原生格式相同，漢字直接搬 30 bytes、不縮放；Big5 缺字才落到 TTF 備援。**`Big5 缺字 N 字` 這行是品質指標**：本作只該有 1 字（`・`），若一大批缺字就先懷疑索引公式或漏帶 `SPCFONT.15`。
+
+`tools/build_cht_font.py` 是早期 12×12（WQY embedded bitmap）版本的烘字工具，留著備查，正式流程不用它。
 
 ### 5. 實機驗證
 
@@ -92,15 +97,16 @@ DISPLAY=:99 tools/scummvm-src/scummvm -p game-cht/mansiond \
 DISPLAY=:99 import -window root shot.png
 ```
 
-啟動 log 出現 `Loading CJK Font`、偵測結果標示 `Chinese (Simplified)`，就代表 ZH_CHN 路徑有進去。
+啟動 log 出現 `Loading CJK Font`、偵測結果標示 `Chinese (Simplified)`，就代表 ZH_CHN 路徑有進去。視窗會是 **640×400**（hi-res 文字表面），所以 Xvfb 開 640×480 剛好裝得下。
 
 驗收項目：
 
-- [ ] 指令列 15 個全中文、兩列、間距不重疊
+- [ ] 原始美術 2× 放大正常，**沒有雪花／橫向錯位**（有 → `drawStripToScreen()` 的底圖放大沒生效）
+- [ ] 指令列 15 個全中文，維持原版 5 欄 × 3 列、間距不重疊
 - [ ] 句子列中文，下緣無殘影
 - [ ] 對白逐字正確，**無字元級亂碼**（有 → 撞碼，回頭檢查碼空間）
-- [ ] **無截字**（有 → renderer 字高／字寬硬編碼，回頭檢查第 4、5 項 patch）
-- [ ] 長訊息會分頁而不是被裁掉
+- [ ] **無截字**（有 → renderer 字高／字寬，回頭檢查 `getDrawWidthIntern` / `getDrawHeightIntern`）
+- [ ] 前後兩則訊息不疊字（有 → `restoreCharsetBg()` 沒清文字表面）
 - [ ] 片頭字幕（純 ASCII）維持兩行、不需要按鍵翻頁
 - [ ] 物品欄中文，不出現半個字
 
@@ -112,7 +118,9 @@ DISPLAY=:99 import -window root shot.png
 | `ERROR: char > 0x80 in line N` | 沒開 `SCUMMTR_CJK_CUSTOM_CODESPACE` |
 | `ERROR: Empty lines are forbidden` | 譯文有真正的空行；`merge_translation.py` 會自動還原成原文 |
 | `ERROR: Script error at 0x... in 07.LFL (roomOps)` | 原版資料遺留的孤立字串，無害（見 `00-engine-verification.md`） |
-| 中文變成橫條噪點 | 字高被截 → 第 4 項 patch |
-| 字距整排錯開 | 字寬算成 8 → 第 5 項 patch |
+| 中文變成橫條噪點 | 字模高被截 → `getDrawHeightIntern()` |
+| 畫面整片雪花／橫向錯位 | `_textSurfaceMultiplier=2` 但底圖沒放大 → `drawStripToScreen()` |
+| 前後兩則訊息疊在一起 | 文字表面沒清 → `restoreCharsetBg()` |
 | 字幕多出一個怪字並被截斷 | 撞到空白壓縮碼 → 碼空間首碼範圍 |
+| 大批中文缺字（畫面空白或全是同一個字） | 漏帶 `SPCFONT.15`，或 Big5 分區索引寫錯 —— 用「`STDFONT.15` 的 idx=0 必須是『一』」當 oracle |
 | import 中途失敗後再跑報「already exists」 | 殘留 `*.LFL~~scummio-tmp`，先 `rm -f *scummio-tmp` 再從原版重新複製 LFL |

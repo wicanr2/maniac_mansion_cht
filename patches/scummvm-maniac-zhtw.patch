@@ -1,95 +1,55 @@
-diff --git a/engines/scumm/actor.cpp b/engines/scumm/actor.cpp
-index 7c48e492..94613302 100644
---- a/engines/scumm/actor.cpp
-+++ b/engines/scumm/actor.cpp
-@@ -3468,6 +3468,55 @@ void ScummEngine::actorTalk(const byte *msg) {
- 
- 	convertMessageToString(msg, _charsetBuffer, sizeof(_charsetBuffer));
- 
-+	// 繁中化：中文行高 13px（英文 8px），一段多行對白從角色頭上往下長，行數一多就會
-+	// 蓋掉畫面下方的指令列，甚至長到螢幕外。這裡限制每頁最多 kMaxCJKLines 行，
-+	// 超出的換行控制碼（0xFF 0x01）就地改成「等待點擊」（0xFF 0x03）。
-+	//
-+	// 兩個位元組換兩個位元組，長度不變，不必搬移緩衝區；而且 0x03 是原版資料本來
-+	// 就在用的分頁碼（例如門鈴那段長描述），引擎的 countNumberOfWaits() 也認得，
-+	// 所以玩家按一下就翻頁、talk delay 也會跟著重算。
-+	if (_useCJKMode && _language == Common::ZH_CHN && _game.version == 2) {
-+		// 只處理真的含中文的訊息。沒有中文的原版字幕維持 8px 行距（見
-+		// CharsetRendererCommon::getFontHeight()），兩行本來就放得進 16px 文字區，
-+		// 不該被改成分頁——否則片頭字幕會變成要一頁一頁按。
-+		bool hasCJK = false;
-+		for (const byte *p = _charsetBuffer; *p && !hasCJK; ++p)
-+			hasCJK = (*p >= 0x88 && *p <= 0x9F);
-+
-+		if (hasCJK) {
-+			// 每頁能放幾行，由「這個畫面實際的文字區高度」推算，不寫死：
-+			//  * 腳本要求了文字區（_screenB > 0，例如片頭字幕的 16px）→ 以它為上限，
-+			//    16 / 13 = 1 行，多出來的換行改成分頁，就不會被文字區裁掉。
-+			//  * 沒有文字區（對白直接畫在房間上）→ 以房間畫面高度為上限，約 11 行。
-+			const int lineHeight = MAX<int>(1, _2byteHeight + 1);
-+			const int textArea = _screenB > 0 ? _screenB : _virtscr[kMainVirtScreen].h;
-+			const int maxCJKLines = MAX<int>(1, textArea / lineHeight);
-+			int lines = 1;
-+			for (byte *p = _charsetBuffer; *p; ) {
-+				if (*p == 0xFF || *p == 0xFE) {
-+					byte code = p[1];
-+					if (!code)
-+						break;
-+					if (code == 1) {                    // 換行
-+						if (++lines > maxCJKLines) {
-+							p[1] = 3;                   // → 等待點擊（分頁）
-+							lines = 1;
-+						}
-+						p += 2;
-+					} else if (code == 2 || code == 3) { // 原本就有的段落／分頁點
-+						lines = 1;
-+						p += 2;
-+					} else {
-+						p += (code > 3 && code < 8) ? 4 : 2;
-+					}
-+					continue;
-+				}
-+				// 自訂碼空間的中文是兩個位元組（首碼 0x88-0x9F）
-+				p += (*p >= 0x88 && *p <= 0x9F) ? 2 : 1;
-+			}
-+		}
-+	}
-+
- 	// I have commented out this workaround, since it did cause another
- 	// bug (#11480). It is not okay to skip the stopTalk() calls here.
- 	// Instead, I have added two checks from LOOM DOS EGA disasm (one
 diff --git a/engines/scumm/charset.cpp b/engines/scumm/charset.cpp
-index 190e1818..c502f639 100644
+index 190e1818..8a9f9ac5 100644
 --- a/engines/scumm/charset.cpp
 +++ b/engines/scumm/charset.cpp
 @@ -106,6 +106,9 @@ void ScummEngine::loadCJKFont() {
  		_2byteFontPtr[0] = 0xFF;
  	} else if (_language == Common::KO_KOR ||
  			   (_game.version >= 7 && (_language == Common::JA_JPN || _language == Common::ZH_TWN)) ||
-+			   // 繁中化（Maniac Mansion V2）：v2 也要能進 ZH_CHN 路徑。原本的 gate 是
-+			   // version >= 3，把 SCUMM v1/v2 整批擋在外面。
++			   // 繁中化（Maniac Mansion V2）：原本的 gate 是 version >= 3，把 SCUMM v1/v2
++			   // 整批擋在 ZH_CHN 路徑外面。
 +			   (_game.version == 2 && _game.id == GID_MANIAC && _language == Common::ZH_CHN) ||
  			   (_game.version >= 3 && _language == Common::ZH_CHN)) {
  		int numChar = 0;
  		const char *fontFile = nullptr;
-@@ -130,7 +133,15 @@ void ScummEngine::loadCJKFont() {
+@@ -130,7 +133,13 @@ void ScummEngine::loadCJKFont() {
  			numChar = 13630;
  			break;
  		case Common::ZH_CHN:
 -			if (_game.id == GID_FT || _game.id == GID_LOOM || _game.id == GID_INDY3 ||
 +			if (_game.id == GID_MANIAC && _game.version == 2) {
 +				// 繁中化自訂碼空間：首碼 0x88-0x9F、尾碼 0xA1-0xFD，共 24 * 93 = 2232 字。
-+				// SCUMM v2 腳本字串用「位元組 | 0x80」表示「該字元後接一個空白」，首碼必須
-+				// 避開所有壓縮得出來的值：可列印 ASCII (0x20-0x7E) | 0x80 = 0xA0-0xFE，
-+				// 以及控制碼 0x01-0x03 | 0x80 = 0x81-0x83（片頭字幕 `by\001     Ron` 就會
-+				// 壓出 0x81）。0x88-0x9F 與兩者都不重疊，可證明無歧義。
++				// 首碼必須避開 SCUMM v2 空白壓縮（「位元組 | 0x80」= 後接一個空白）會產生的
++				// 值：可列印 ASCII | 0x80 = 0xA0-0xFE，控制碼 0x01-0x03 | 0x80 = 0x81-0x83。
 +				fontFile = "chinese_gb16x12.fnt";
 +				numChar = 2232;
 +			} else if (_game.id == GID_FT || _game.id == GID_LOOM || _game.id == GID_INDY3 ||
  				_game.id == GID_INDY4 || _game.id == GID_MONKEY || _game.id == GID_MONKEY2 ||
  				_game.id == GID_TENTACLE) {
  				fontFile = "chinese_gb16x12.fnt";
-@@ -310,6 +321,16 @@ byte *ScummEngine::get2byteCharPtr(int idx) {
+@@ -163,6 +172,21 @@ void ScummEngine::loadCJKFont() {
+ 				_newLineCharacter = 0x21;
+ 				break;
+ 			case Common::ZH_CHN:
++				if (_game.id == GID_MANIAC && _game.version == 2) {
++					// 繁中化：倚天中文系統 (ETEN 3.53) 的 16x15 原生點陣字。
++					//
++					// 字模 16x15，但**排版仍以邏輯像素計**：文字表面放大 2 倍，
++					// 所以 16x15 的字模只佔 8x7.5 個邏輯像素，跟原版 8x8 的 ASCII
++					// 幾乎一樣大 —— 指令列 3 列 x 8px、16px 的文字區兩行、行距，
++					// 全都不必改。邏輯／字模的換算由 printChar() 既有的
++					// `if (is2byte) { origWidth /= _textSurfaceMultiplier; ... }` 負責，
++					// 與 FM-Towns 的 CJK 走法一致。
++					_2byteWidth = 16;
++					_2byteHeight = 15;
++					_newLineCharacter = 0x21;
++					_textSurfaceMultiplier = 2;
++					break;
++				}
+ 				_2byteWidth = 12;
+ 				_2byteHeight = 12;
+ 				_newLineCharacter = 0x21;
+@@ -310,6 +334,16 @@ byte *ScummEngine::get2byteCharPtr(int idx) {
  			return _2byteFontPtr + base;
  		}
  	case Common::ZH_CHN:
@@ -106,73 +66,140 @@ index 190e1818..c502f639 100644
  		idx = ((idx % 256) - 0xa1)* 94  + ((idx / 256) - 0xa1);
  		break;
  	default:
-@@ -451,6 +472,15 @@ int CharsetRendererCommon::getFontHeight() const {
+@@ -451,6 +485,11 @@ int CharsetRendererCommon::getFontHeight() const {
  	} else if (_vm->_isIndy4Jap) {
  		return _vm->_force2ByteCharHeight ? 14 : _fontHeight;
  	} else if (_vm->_useCJKMode && !isSegaCD) {
-+		// 繁中化（Maniac Mansion V2）：純 ASCII 的訊息維持原版 8px 行距。
-+		//
-+		// v2 的文字區高度是腳本呼叫 initScreens(b, h) 時給的 b（見 initScreens 裡的
-+		// `initVirtScreen(kTextVirtScreen, adj, _screenWidth, b, ...)`），片頭字幕那類
-+		// 畫面只給 16px = 剛好兩行 8px。若整個 CJK 模式一律用 13px 行距，這些
-+		// 沒有中文的原版字幕第二行就會被文字區裁掉一半。
-+		// 用引擎既有的 _force2ByteCharHeight 判斷「這則訊息真的有雙位元組字」。
-+		if (_vm->_game.id == GID_MANIAC && _vm->_game.version == 2 && !_vm->_force2ByteCharHeight)
++		// 繁中化（Maniac Mansion V2 hi-res）：這裡回的是**邏輯**行高。字模雖是 16x15，
++		// 但畫在 2 倍的文字表面上，邏輯上只佔 8 列，所以行距維持原版 8px
++		// （比照 CharsetRendererTownsV3::getFontHeight() 在 CJK 下回 8 的做法）。
++		if (_vm->_game.id == GID_MANIAC && _vm->_game.version == 2)
 +			return _fontHeight;
  		return MAX(_vm->_2byteHeight + 1, _fontHeight);
  	} else {
  		return _fontHeight;
-@@ -868,7 +898,20 @@ int CharsetRendererV3::getDrawWidthIntern(uint16 chr) {
+@@ -865,10 +904,19 @@ void CharsetRendererPC::drawBits1Kor(Graphics::Surface &dest, int x1, int y1, co
+ }
+ 
+ int CharsetRendererV3::getDrawWidthIntern(uint16 chr) {
++	// 繁中化：這裡回的是**字模**寬（給 drawBits1 用），CJK 是 16；邏輯推進寬仍由
++	// getCharWidth() 回 8，printChar() 會把 origWidth 除以 _textSurfaceMultiplier
++	// 之後才推進 _left。
++	if (chr >= 256 && _vm->_useCJKMode)
++		return _vm->_2byteWidth;
  	return getCharWidth(chr);
  }
  
 -int CharsetRendererV3::getDrawHeightIntern(uint16) {
 +int CharsetRendererV3::getDrawHeightIntern(uint16 chr) {
-+	// 繁中化：CJK 字高不是 8。原本固定回 8 會把 12x12 的中文字截成上半 8 列，
++	// 繁中化：同上，這裡是**字模**高。原本固定回 8 會把中文字截成上半段，
 +	// 畫面上看起來像橫條噪點而不是「字太小」。
 +	if (chr >= 256 && _vm->_useCJKMode)
 +		return _vm->_2byteHeight;
-+	return 8;
-+}
-+
-+// 繁中化：CharsetRendererV2 覆寫了 getCharWidth 並固定回 8，而 V3 的
-+// getDrawWidthIntern() 是轉呼叫 getCharWidth()，所以 v2 的中文字寬會全部算成 8，
-+// 字距整排錯開。這是 v2 專屬的點（v3 的 Zak 走 CharsetRendererV3 不會踩到）。
-+int CharsetRendererV2::getCharWidth(uint16 chr) const {
-+	if (chr >= 256 && _vm->_useCJKMode)
-+		return _vm->_2byteWidth;
  	return 8;
  }
  
-diff --git a/engines/scumm/charset.h b/engines/scumm/charset.h
-index 7f288d7b..e8c4b231 100644
---- a/engines/scumm/charset.h
-+++ b/engines/scumm/charset.h
-@@ -284,7 +284,8 @@ public:
- 	~CharsetRendererV2() override;
+@@ -981,7 +1029,19 @@ void CharsetRendererV3::printChar(int chr, bool ignoreCharsetMask) {
+ 		_textScreenID = vs->number;
+ 	}
  
- 	void setCurID(int32 id) override {}
--	int getCharWidth(uint16 chr) const override { return 8; }
-+	// 繁中化：CJK 字寬不是 8（實作移到 charset.cpp，因為要讀 ScummEngine 的成員）
-+	int getCharWidth(uint16 chr) const override;
- 
- #ifdef USE_TTS
- 	Common::U32String convertText(const Common::String &text, Common::Language language) const override;
+-	if ((ignoreCharsetMask || !vs->hasTwoBuffers)
++	// 繁中化（hi-res）：文字表面放大 2 倍時，**所有**文字都畫到文字表面上。
++	//
++	// 原本 hasTwoBuffers == false 的畫面（指令列／物品欄／句子列所在的
++	// kVerbVirtScreen、片頭字幕的 kTextVirtScreen）會把字直接畫進 1 倍的虛擬螢幕。
++	// 若只把中文導到 2 倍的文字表面、ASCII 留在虛擬螢幕，兩邊的清除時機就不一致，
++	// 畫面上會出現前後兩則訊息疊字。全部走文字表面則清除路徑統一
++	// （restoreBackground() 本來就會按 _textSurfaceMultiplier 一起清文字表面），
++	// 而 ASCII 由 drawBits1() 既有的 scale2x 自動放大 2 倍。這與 FM-Towns 把
++	// 文字全部放在上層的作法一致。
++	const bool hiResText = (_vm->_textSurfaceMultiplier == 2 &&
++							_vm->_game.id == GID_MANIAC && _vm->_game.version == 2);
++
++	if ((ignoreCharsetMask || !vs->hasTwoBuffers) && !hiResText
+ #ifndef DISABLE_TOWNS_DUAL_LAYER_MODE
+ 		&& (_vm->_game.platform != Common::kPlatformFMTowns)
+ #endif
+diff --git a/engines/scumm/gfx.cpp b/engines/scumm/gfx.cpp
+index bf85f13c..57ec7dd0 100644
+--- a/engines/scumm/gfx.cpp
++++ b/engines/scumm/gfx.cpp
+@@ -704,6 +704,44 @@ void ScummEngine::drawStripToScreen(VirtScreen *vs, int x, int width, int top, i
+ 			return;
+ 		} else
+ #endif
++		// 繁中化（Maniac Mansion V2）：hi-res 文字表面的合成。
++		//
++		// 底下原本的合成迴圈會跑 (height*m) x (width*m) 個目的像素，但 src 是**線性**
++		// 讀取 1 倍的底圖 —— m=2 時底圖整片錯位，畫面變成雪花。這正是「DOS 版不能設
++		// _textSurfaceMultiplier=2」這個結論的成因：缺的其實只是「底圖也要放大」一步。
++		//
++		// 補上之後就等同 SCI 引擎的 GFX_SCREEN_UPSCALED_640x400：原畫 2x nearest 放大
++		// （不動原始美術），中文字直接畫在 2 倍的文字表面上，繞過整體 nearest 放大，
++		// 因此同一畫面「美術照原樣、中文銳利」。
++		//
++		// 注意：這條路徑直接送 copyRectToScreen，跳過 postProcessDOSGraphics()，
++		// 因此與 CGA / Hercules 這類需要後處理的 render mode 不相容（預設 EGA/VGA 下
++		// 那個函式本來就會立刻 return，所以沒有差別）。
++		if (m == 2 && _useCJKMode && _outputPixelFormat.bytesPerPixel == 1 &&
++			_game.id == GID_MANIAC && _game.version == 2) {
++			const byte *srcRow = (const byte *)src;
++			const byte *textRow = (const byte *)_textSurface.getBasePtr(x * m, y * m);
++			byte *dstPtr = _compositeBuf;
++
++			for (int h = 0; h < height * m; ++h) {
++				const byte *s = srcRow;
++				const byte *t = textRow;
++				for (int w = 0; w < width; ++w) {
++					byte bg = *s++;
++					for (int sub = 0; sub < m; ++sub) {
++						byte tx = *t++;
++						*dstPtr++ = (tx == CHARSET_MASK_TRANSPARENCY) ? bg : tx;
++					}
++				}
++				if (h & 1)
++					srcRow += vs->pitch;   // 每兩個目的列才前進一個來源列
++				textRow += _textSurface.pitch;
++			}
++
++			_system->copyRectToScreen(_compositeBuf, width * m, x * m, y * m, width * m, height * m);
++			return;
++		}
++
+ 		// Compose the text over the game graphics
+ 		if (_outputPixelFormat.bytesPerPixel == 2) {
+ 			const byte *srcPtr = (const byte *)src;
+@@ -1323,6 +1361,16 @@ void ScummEngine::restoreCharsetBg() {
+ 		if (vs->hasTwoBuffers || _macScreen) {
+ 			// Clean out the charset mask
+ 			clearTextSurface();
++		} else if (_textSurfaceMultiplier == 2 && _game.id == GID_MANIAC && _game.version == 2) {
++			// 繁中化（hi-res）：上面那段 clearTextSurface() 只在 hasTwoBuffers 時執行，
++			// 因為原本設計裡 kTextVirtScreen / kVerbVirtScreen 的文字是直接畫進虛擬螢幕、
++			// 由前面的 memset 清掉的。hi-res 模式把所有文字都畫到文字表面之後，這些畫面
++			// 就沒人清了，畫面上會出現前後兩則訊息疊字。這裡只清該虛擬螢幕對應的那一塊，
++			// 不動其他畫面（例如指令列）已經畫好的文字。
++			byte *mask = (byte *)_textSurface.getBasePtr(0, vs->topline * _textSurfaceMultiplier);
++			fill(mask, _textSurface.pitch, CHARSET_MASK_TRANSPARENCY,
++				 vs->w * _textSurfaceMultiplier, vs->h * _textSurfaceMultiplier,
++				 _textSurface.format.bytesPerPixel);
+ 		}
+ 	}
+ }
 diff --git a/engines/scumm/script_v2.cpp b/engines/scumm/script_v2.cpp
-index 241d938a..0fc2035c 100644
+index 241d938a..509ef832 100644
 --- a/engines/scumm/script_v2.cpp
 +++ b/engines/scumm/script_v2.cpp
-@@ -373,6 +373,19 @@ void ScummEngine_v2::decodeParseString() {
+@@ -373,6 +373,18 @@ void ScummEngine_v2::decodeParseString() {
  
  	while ((c = fetchScriptByte())) {
  
-+		// 繁中化：自訂碼空間的首碼落在 0x88-0x9F，原樣輸出兩個 byte。
++		// 繁中化：自訂碼空間的首碼落在 0x88-0x9F，該位元組與下一個原樣寫入。
 +		//
 +		// v2 的腳本字串用「位元組 | 0x80」表示「該位元組後面接一個空白」（空白壓縮），
-+		// 底下的 `c &= 0x7f` 會把任何高位元砍掉，中文因此完全進不來。首碼必須避開
-+		// 所有壓縮得出來的值：可列印 ASCII (0x20-0x7E) | 0x80 = 0xA0-0xFE，以及
-+		// 控制碼 0x01-0x03 | 0x80 = 0x81-0x83（片頭字幕 `by\001     Ron` 的 \001
-+		// 後面接空白，就會被壓成 0x81）。0x88-0x9F 與兩者都不重疊。
++		// 底下的 `c &= 0x7f` 會把任何高位元砍掉，中文因此完全進不來。首碼避開了所有
++		// 壓縮得出來的值：可列印 ASCII (0x20-0x7E) | 0x80 = 0xA0-0xFE，以及控制碼
++		// 0x01-0x03 | 0x80 = 0x81-0x83（片頭字幕 `by\001     Ron` 就會壓出 0x81）。
 +		if (_useCJKMode && c >= 0x88 && c <= 0x9F) {
 +			*ptr++ = c;
 +			*ptr++ = fetchScriptByte();
@@ -182,141 +209,22 @@ index 241d938a..0fc2035c 100644
  		insertSpace = (c & 0x80) != 0;
  		c &= 0x7f;
  
-@@ -925,6 +938,35 @@ void ScummEngine_v2::o2_verbOps() {
- 
- 		// It follows the verb name
- 		loadPtrToResource(rtVerb, slot, nullptr);
-+
-+		// 繁中化：把 15 個指令從「5 欄 x 3 列 x 8px」改成「8+7 x 2 列 x 11px」。
-+		//
-+		// 中文字高 12px，塞不進原本 8px 的列距；但指令區總高是 24px（畫面 y 152-175），
-+		// 剛好等於 2 列 x 12px，所以改成兩列就能完整留在原有區帶內，不動畫面其他部分。
-+		// 每格寬 40px（= 譯文用 '@' 補到 5 bytes，drawVerb 算出的 curRect.right
-+		// 正好是 left + (6-1)*8 = left + 40），中文指令最寬 2 字 = 24px，不會相鄰重疊。
-+		//
-+		// 只認「資源長度剛好 6」的短指令，所以片頭裝飾用的長字串（script 9 的
-+		// "Lucasfilm Games Presents"、script 165 的角色名牌、存檔欄位）不受影響；
-+		// 指令若還是英文（原始長度 8-10）也不會被重排，這個 patch 會自動不生效。
-+		if (_language == Common::ZH_CHN && _game.id == GID_MANIAC && _game.version == 2 &&
-+			getResourceSize(rtVerb, slot) == 6) {
-+			// 依原版的欄優先順序攤平：推 拉 給 / 打開 關上 閱讀 / 走到 拿起 查看 /
-+			// 開鎖 換人 使用 / 開啟 關閉 修理
-+			static const byte kVerbOrder[15] = { 9, 10, 3, 1, 2, 12, 13, 14, 15, 8, 7, 11, 4, 5, 6 };
-+			for (int k = 0; k < 15; ++k) {
-+				if (kVerbOrder[k] != vs->verbid)
-+					continue;
-+				int col = (k < 8) ? k : k - 8;
-+				int row = (k < 8) ? 0 : 1;
-+				// 版面預算：指令畫面共 56px。字形實際只占 11 列（第 12 列留白），
-+				// 所以句子列 0、指令兩列 11/23（列距 12，留 1px 間隙好讀）、
-+				// 物品欄兩列 34/45（列距 11），最後一列到 55，剛好用完。
-+				vs->curRect.left = vs->origLeft = col * 40;
-+				vs->curRect.top = _virtscr[kVerbVirtScreen].topline + 11 + row * 12;
-+				break;
-+			}
-+		}
- 		}
- 		break;
- 	}
-diff --git a/engines/scumm/string.cpp b/engines/scumm/string.cpp
-index ebb998ec..f2edc877 100644
---- a/engines/scumm/string.cpp
-+++ b/engines/scumm/string.cpp
-@@ -1015,7 +1015,10 @@ void ScummEngine_v2::drawSentence() {
- 		sentenceline.right = _virtscr[kVerbVirtScreen].w - 1;
- 	} else {
- 		sentenceline.top = _virtscr[kVerbVirtScreen].topline + pixelYOffset;
--		sentenceline.bottom = _virtscr[kVerbVirtScreen].topline + 8 + pixelYOffset;
-+		// 繁中化：中文句子列高 12px，原本只清 8px 會在下緣留下殘影。
-+		// 清到 11px（指令第一列從 11 開始，各自負責自己的區塊）。
-+		sentenceline.bottom = _virtscr[kVerbVirtScreen].topline +
-+			((_useCJKMode && _language == Common::ZH_CHN) ? 11 : 8) + pixelYOffset;
- 		sentenceline.left = 0 + pixelXOffset;
- 		sentenceline.right = _virtscr[kVerbVirtScreen].w - 1 + pixelXOffset;
- 	}
-@@ -1537,8 +1540,13 @@ void ScummEngine::drawString(int a, const byte *msg, Common::TextToSpeechManager
- 				}
- 			}
- 			if (c & 0x80 && _useCJKMode) {
--				if (is2ByteCharacter(_language, c))
-+				if (is2ByteCharacter(_language, c)) {
- 					c += buf[i++] * 256;
-+					// 繁中化：這則訊息確實含雙位元組字 → 行距要用 CJK 字高
-+					// （getFontHeight() 會看這個旗標，見 charset.cpp）
-+					if (_game.id == GID_MANIAC && _game.version == 2)
-+						_force2ByteCharHeight = true;
-+				}
- 			}
- 
- 			// With the code above, we risk missing the termination character.
 diff --git a/engines/scumm/verbs.cpp b/engines/scumm/verbs.cpp
-index 1637dd33..5d8cd8b8 100644
+index 1637dd33..b45919c2 100644
 --- a/engines/scumm/verbs.cpp
 +++ b/engines/scumm/verbs.cpp
-@@ -233,11 +233,17 @@ void ScummEngine_v2::initV2MouseOver() {
- 
- 	// Inventory items
- 
-+	// 繁中化：中文字高 12px，物品欄兩列改成 11px 列距並下移到 33 起算
-+	// （句子列 0-11、指令兩列 11-33、物品欄 33-55，剛好用完指令畫面的 56px）。
-+	const bool zhCJK = (_language == Common::ZH_CHN && _game.id == GID_MANIAC && _game.version == 2);
-+	const int invTop = zhCJK ? 34 : 32;
-+	const int invPitch = zhCJK ? 11 : 8;
-+
- 	for (i = 0; i < 2; i++) {
- 		_mouseOverBoxesV2[2 * i].rect.left = 0 + pixelXOffset;
- 		_mouseOverBoxesV2[2 * i].rect.right = 144 + pixelXOffset;
--		_mouseOverBoxesV2[2 * i].rect.top = 32 + 8 * i + pixelYOffset;
--		_mouseOverBoxesV2[2 * i].rect.bottom = _mouseOverBoxesV2[2 * i].rect.top + 8;
-+		_mouseOverBoxesV2[2 * i].rect.top = invTop + invPitch * i + pixelYOffset;
-+		_mouseOverBoxesV2[2 * i].rect.bottom = _mouseOverBoxesV2[2 * i].rect.top + invPitch;
- 
- 		_mouseOverBoxesV2[2 * i].color = color;
- 		_mouseOverBoxesV2[2 * i].hicolor = _hiLiteColorInvSentence;
-@@ -255,16 +261,16 @@ void ScummEngine_v2::initV2MouseOver() {
- 
- 	_mouseOverBoxesV2[kInventoryUpArrow].rect.left = 144 + pixelXOffset;
- 	_mouseOverBoxesV2[kInventoryUpArrow].rect.right = 176 + pixelXOffset;
--	_mouseOverBoxesV2[kInventoryUpArrow].rect.top = 32 + pixelYOffset;
--	_mouseOverBoxesV2[kInventoryUpArrow].rect.bottom = 40 + pixelYOffset;
-+	_mouseOverBoxesV2[kInventoryUpArrow].rect.top = invTop + pixelYOffset;
-+	_mouseOverBoxesV2[kInventoryUpArrow].rect.bottom = invTop + invPitch + pixelYOffset;
- 
- 	_mouseOverBoxesV2[kInventoryUpArrow].color = arrow_color;
- 	_mouseOverBoxesV2[kInventoryUpArrow].hicolor = _hiLiteColorVerbArrow;
- 
- 	_mouseOverBoxesV2[kInventoryDownArrow].rect.left = 144 + pixelXOffset;
- 	_mouseOverBoxesV2[kInventoryDownArrow].rect.right = 176 + pixelXOffset;
--	_mouseOverBoxesV2[kInventoryDownArrow].rect.top = 40 + pixelYOffset;
--	_mouseOverBoxesV2[kInventoryDownArrow].rect.bottom = 48 + pixelYOffset;
-+	_mouseOverBoxesV2[kInventoryDownArrow].rect.top = invTop + invPitch + pixelYOffset;
-+	_mouseOverBoxesV2[kInventoryDownArrow].rect.bottom = invTop + 2 * invPitch + pixelYOffset;
- 
- 	_mouseOverBoxesV2[kInventoryDownArrow].color = arrow_color;
- 	_mouseOverBoxesV2[kInventoryDownArrow].hicolor = _hiLiteColorVerbArrow;
-@@ -438,7 +444,9 @@ void ScummEngine_v2::redrawV2Inventory() {
- 	int maxVisibleInv, invCount, obj;
- 	Common::Rect inventoryBox;
- 	bool isNES = (_game.platform == Common::kPlatformNES);
--	int inventoryArea = isNES ? 48 : 32;
-+	// 繁中化：物品欄下移到 33 起算（見 initV2MouseOver）
-+	const bool zhCJK = (_language == Common::ZH_CHN && _game.id == GID_MANIAC && _game.version == 2);
-+	int inventoryArea = isNES ? 48 : (zhCJK ? 34 : 32);
- 	int maxChars = isNES ? 13 : 18;
- 	int pixelYOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
- 	int pixelXOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
-@@ -485,6 +493,23 @@ void ScummEngine_v2::redrawV2Inventory() {
+@@ -485,6 +485,23 @@ void ScummEngine_v2::redrawV2Inventory() {
  		msg[maxChars] = 0;
  		strncpy((char *)msg, (const char *)tmp, maxChars);
  
 +		// 繁中化：上面的 strncpy 是按 byte 截斷，可能把雙位元組字砍成半個
-+		// （只留下首碼），畫面上會出現一個亂碼字。往前掃到最後一個完整字。
-+		if (zhCJK && _useCJKMode) {
++		// （只留下首碼），畫面上會出現一個亂碼字。往前掃到最後一個完整的字。
++		if (_useCJKMode && _language == Common::ZH_CHN) {
 +			int cut = 0;
 +			for (int k = 0; msg[k]; ) {
 +				if (msg[k] >= 0x88 && msg[k] <= 0x9F) {
 +					if (!msg[k + 1])
-+						break;      // 首碼落單 → 從這裡切掉
++						break;
 +					k += 2;
 +				} else {
 +					k += 1;

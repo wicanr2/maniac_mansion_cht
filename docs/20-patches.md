@@ -1,19 +1,52 @@
 # 引擎與工具修補清單
 
-兩份 patch，共 217 行新增（含中文註解）／12 行刪除：
-
 | 檔案 | 對象 | 規模 |
 |---|---|---|
-| `patches/scummvm-maniac-zhtw.patch` | ScummVM（`engines/scumm/`，6 個檔） | +173 / −12 |
+| `patches/scummvm-maniac-zhtw.patch` | ScummVM（`engines/scumm/`，4 個檔） | +134 / −3 |
 | `patches/scummtr-maniacv2-lossless.patch` | ScummTR（`src/ScummRp/`、`src/ScummTr/`） | +44 / −0 |
 
-ScummTR 那份的兩處改動都以巨集開關包住，預設行為與上游完全相同。
+ScummTR 那份的三處改動都以巨集開關包住，預設行為與上游完全相同。
 
-## 碼空間（先講這個，其餘修補都建立在它上面）
+## 走 hi-res 文字表面（決定其餘一切的選擇）
 
-自訂雙位元組編碼：**首碼 `0x88–0x9F`（24 個）、尾碼 `0xA1–0xFD`（93 個）→ 2232 個字位**，本作實際用掉 1000 字。字型索引 `idx = (lead - 0x88) * 93 + (trail - 0xA1)`。
+**中文字用倚天中文系統 (ETEN 3.53) 的 16×15 原生點陣字，畫在放大 2 倍的文字表面上。**
 
-首碼範圍是**推導出來的，不是沿用慣例**。SCUMM v2 的腳本字串有一套空白壓縮：「位元組 | 0x80」表示「這個字元後面接一個空白」，解壓在 `ScummEngine_v2::decodeParseString()`：
+這與 ScummVM SCI 引擎中文化的作法同源：SCI 在 `ZH_TWN` 下切 `GFX_SCREEN_UPSCALED_640x400`，原始美術照舊 2× nearest 放大，但中文字改用 hi-res 字型直接繪進 display buffer，繞過整體 nearest 放大 → 同一畫面「美術照原樣、中文銳利」。SCUMM 對應的機制就是 `_textSurfaceMultiplier = 2`。
+
+選它的理由是**幾何上的必然**，不是偏好：
+
+* 指令畫面（`kVerbVirtScreen`）總共只有 56 個邏輯像素要容納五列文字（句子列 + 指令 3 列 + 物品欄 2 列），列距上限 11px。
+* 倚天沒有 12 點字（光碟只有 15 點與 24 點），而把 15 點機器縮到 12×12 實測會讓「讀」「觸」這類筆畫多的字糊成一團。
+* 文字表面放大 2 倍之後，**16×15 的字模只佔 8×7.5 個邏輯像素**——與原版 8×8 的 ASCII 幾乎同尺寸。於是指令列 3 列 × 8px、16px 的文字區兩行、行距全都不必改。
+
+也就是說：拉畫布不只解決了字形來源，還讓**整批版面修補變成不需要**。第一版（12×12 字型、不拉畫布）為了塞下 12px 中文，動了指令列 2 列重排、物品欄列距、句子列清除高度、行距、自動分頁共五處版面邏輯；改走 hi-res 之後這些全部撤掉，patch 從 6 檔 173 行縮到 **4 檔 134 行**。
+
+### 邏輯像素 vs 字模像素
+
+這是最容易搞錯的地方。慣例照抄引擎裡現成的 m=2 CJK 使用者（`CharsetRendererTownsV3`）：
+
+| 函式 | 回傳 | 值 |
+|---|---|---|
+| `getCharWidth()` | **邏輯**推進寬 | 8 |
+| `getFontHeight()` | **邏輯**行高 | 8 |
+| `getDrawWidthIntern()` | **字模**寬（給 `drawBits1`） | 16 |
+| `getDrawHeightIntern()` | **字模**高 | 15 |
+
+換算由 `printChar()` 裡本來就有的這段負責，不必自己算：
+
+```cpp
+if (is2byte) {
+    origWidth /= _vm->_textSurfaceMultiplier;
+    height /= _vm->_textSurfaceMultiplier;
+}
+_left += origWidth;
+```
+
+## 碼空間
+
+自訂雙位元組編碼：**首碼 `0x88–0x9F`（24 個）、尾碼 `0xA1–0xFD`（93 個）→ 2232 個字位**，本作實際用掉 1000 字。字型索引 `idx = (lead - 0x88) * 93 + (trail - 0xA1)`，每字 `((16+7)/8) * 15 = 30` bytes——**與倚天 `STDFONT.15` 的原生 stride 完全相同**，所以漢字與標點都是直接搬 30 bytes，不做任何縮放。
+
+首碼範圍是推導出來的。SCUMM v2 的腳本字串有空白壓縮：「位元組 | 0x80」表示「這個字元後面接一個空白」，解壓在 `ScummEngine_v2::decodeParseString()`：
 
 ```cpp
 insertSpace = (c & 0x80) != 0;
@@ -29,77 +62,48 @@ c &= 0x7f;                       // ← 中文首碼會在這裡被砍掉
 
 第一版取 `0x80–0x9F` 時只算了第一列，結果片頭字幕 `by\001     Ron` 的 `\001` 後面接空白、被壓成 `0x81`，落進首碼區被誤判成中文，畫面上多出一個亂碼字並把整行截掉。收窄到 `0x88–0x9F` 後，首碼與「壓縮碼／原始控制碼 `0x01–0x07`／原始 ASCII `0x20–0x7E`」三者都不重疊，可證明無歧義。
 
-（`0x04–0x07` 是帶參數的控制碼，ScummTR 的 `_spaceCharToBit` 不壓縮它們，但首碼避開 `0x84–0x87` 仍留了餘裕。）
+## ScummVM（4 個檔）
 
-## ScummVM
+### `charset.cpp`（7 處）
 
-### 1. `charset.cpp` `loadCJKFont()` — 讓 v2 進得了 ZH_CHN 路徑
+1. **`loadCJKFont()` 的版本 gate** —— 原本是 `_game.version >= 3 && _language == ZH_CHN`，把 SCUMM v1/v2 整批擋在外面。Zak 是 v3，當年只需在裡層的 GID 白名單加一筆；本作是 v2，連外層版本判斷都過不了。
+2. **ZH_CHN 分支加入 `GID_MANIAC`** —— 設 `fontFile = "chinese_gb16x12.fnt"`、`numChar = 2232`。字型檔名沿用原本的，因為 `detection_internal.h` 的 `detectLanguage()` 就是看這個檔名決定要不要切 ZH_CHN，而它**沒有版本限制**，偵測那一側不必改。
+3. **字模尺寸與 hi-res** —— `_2byteWidth = 16`、`_2byteHeight = 15`、`_textSurfaceMultiplier = 2`。
+4. **`get2byteCharPtr()`** —— 自訂索引公式，並對範圍外的組合回第 0 個字形而不是算出負索引。
+5. **`CharsetRendererCommon::getFontHeight()`** —— CJK 模式原本回 `MAX(_2byteHeight + 1, _fontHeight)`；hi-res 下這裡要的是**邏輯**行高，回 `_fontHeight`（8），比照 `CharsetRendererTownsV3` 的做法。
+6. **`CharsetRendererV3::getDrawWidthIntern()` / `getDrawHeightIntern()`** —— 回**字模**尺寸 16／15。後者原本固定回 8，會把中文字截成上半段，畫面上看起來像橫條噪點而不是「字太小」。
+7. **`CharsetRendererV3::printChar()`** —— hi-res 模式下**所有**文字都畫到文字表面。原本 `hasTwoBuffers == false` 的畫面（指令列所在的 `kVerbVirtScreen`、片頭字幕的 `kTextVirtScreen`）會把字直接畫進 1 倍的虛擬螢幕；若只把中文導到 2 倍的文字表面、ASCII 留在虛擬螢幕，兩邊清除時機不一致，畫面會出現前後兩則訊息疊字。ASCII 由 `drawBits1()` 既有的 `scale2x` 自動放大。
 
-原本的 gate 是 `_game.version >= 3 && _language == ZH_CHN`，把 SCUMM v1/v2 整批擋在外面。Zak 是 v3，當年只需要在裡層的 GID 白名單加一筆；本作是 v2，連外層版本判斷都過不了，所以兩層都要動。
+### `gfx.cpp`（2 處）
 
-### 2. `charset.cpp` ZH_CHN 分支 — 加入 `GID_MANIAC`
+8. **`drawStripToScreen()` 補上底圖 2× nearest 放大** —— 這是整條 hi-res 路真正缺的一塊。原本的合成迴圈會跑 `(height*m) × (width*m)` 個目的像素，但 `src` 是**線性**讀取 1 倍的底圖：
 
-設 `fontFile = "chinese_gb16x12.fnt"`、`numChar = 2232`。字型檔名沿用原本的，因為 `detection_internal.h` 的 `detectLanguage()` 就是看這個檔名決定要不要切 ZH_CHN，而它**沒有版本限制**，所以偵測那一側不必改。
+   ```cpp
+   for (int h = height * m; h > 0; --h)
+       for (int w = width * m; w > 0; w -= 4) {
+           uint32 temp = *text32++;                       // 2x 的文字表面
+           *dst32++ = ((temp ^ *src32++) & mask) ^ temp;   // 1x 的底圖，線性讀
+   ```
 
-### 3. `charset.cpp` `get2byteCharPtr()` — 自訂索引公式
+   m=2 時底圖整片錯位 → 雪花。這正是「DOS 版 SCUMM 不能設 `_textSurfaceMultiplier=2`」這個結論的成因；缺的其實只是「底圖也要放大」這一步。補上一條專用合成迴圈（每兩個目的列才前進一個來源列、每個來源像素橫向用兩次）之後就成立了。
 
-原本是 GB2312 區位碼 `(lead-0xA1)*94 + (trail-0xA1)`；本作換成 `(lead-0x88)*93 + (trail-0xA1)`，並對範圍外的組合回第 0 個字形而不是算出負索引。
+   代價：這條路徑直接送 `copyRectToScreen`，跳過 `postProcessDOSGraphics()`，因此與 CGA / Hercules 這類需要後處理的 render mode 不相容（預設 EGA/VGA 下那個函式本來就會立刻 return）。
 
-### 4. `charset.cpp` `CharsetRendererV3::getDrawHeightIntern()` — CJK 字高
+9. **`restoreCharsetBg()` 補清文字表面** —— 原本的 `clearTextSurface()` 只在 `vs->hasTwoBuffers` 時執行，因為原設計裡 `kTextVirtScreen` / `kVerbVirtScreen` 的文字是直接畫進虛擬螢幕、由前面的 `memset` 清掉。第 7 項把所有文字改到文字表面之後這些畫面就沒人清，畫面會疊字。這裡只清該虛擬螢幕對應的那一塊，不動其他畫面（例如指令列）已經畫好的文字。
 
-原本固定 `return 8`。中文 12px 會被截成上半 8 列，畫面上看起來像橫條噪點而不是「字太小」。
+### `script_v2.cpp`（1 處）
 
-### 5. `charset.h` / `charset.cpp` `CharsetRendererV2::getCharWidth()` — CJK 字寬
+10. **`decodeParseString()` 讓中文原樣通過** —— 首碼落在 `0x88–0x9F` 時，該位元組與下一個原樣寫進緩衝區，不做 `&= 0x7f`、也不補空白。**沒有這一項，中文完全進不了對白。**
 
-**這是 v2 專屬的雷。** `CharsetRendererV2` 覆寫了 `getCharWidth()` 並固定回 8，而 `CharsetRendererV3::getDrawWidthIntern()` 是轉呼叫 `getCharWidth()`，所以 v2 的中文字寬會全部算成 8，字距整排錯開。Zak 走 `CharsetRendererV3`，不會遇到。
+### `verbs.cpp`（1 處）
 
-實作從標頭移到 `.cpp`，因為要讀 `ScummEngine` 的成員。
+11. **`redrawV2Inventory()` 的雙位元組安全截字** —— 原本 `strncpy(msg, tmp, maxChars)` 是按 byte 截斷，可能把雙位元組字砍成半個（只留首碼）→ 畫面上出現一個亂碼字。改成往前掃到最後一個完整的字再切。
 
-### 6. `charset.cpp` `CharsetRendererCommon::getFontHeight()` — 行距只在需要時放大
-
-CJK 模式原本一律回 `MAX(_2byteHeight + 1, _fontHeight)` = 13。但 v2 的文字區高度是腳本呼叫 `initScreens(b, h)` 給的 `b`（見 `initVirtScreen(kTextVirtScreen, adj, _screenWidth, b, ...)`），片頭字幕那類畫面只給 **16px = 剛好兩行 8px**。行距一律 13 的話，這些**沒有中文**的原版字幕第二行會被文字區裁掉一半。
-
-改成：只有 `_force2ByteCharHeight` 為真（這則訊息確實含雙位元組字）才用 13px，否則維持原版 8px。這個旗標是引擎既有機制（SegaCD / Indy4 日文版就這樣用）。
-
-### 7. `string.cpp` `CHARSET_1()` — 補上 `_force2ByteCharHeight`
-
-`drawString()` 那條路徑會設這個旗標，但 v2 對白走的 `CHARSET_1()` 不會。在它組合雙位元組字的地方補上，第 6 項才成立。
-
-### 8. `script_v2.cpp` `decodeParseString()` — 中文原樣通過
-
-首碼落在 `0x88–0x9F` 時，把該位元組與下一個位元組原樣寫進緩衝區，不做 `&= 0x7f`、也不補空白。**沒有這一項，中文完全進不了對白。**
-
-### 9. `actor.cpp` `actorTalk()` — 中文訊息自動分頁
-
-中文行高 13px、英文 8px，同一段訊息在中文下高了 1.6 倍，可能超出文字區（被裁）或蓋到畫面下方的指令列。
-
-作法是把超出上限的換行控制碼 `0xFF 0x01` **就地改成等待點擊 `0xFF 0x03`**：兩個位元組換兩個位元組，長度不變、不必搬移緩衝區，而且 `0x03` 是原版資料本來就在用的分頁碼（例如門鈴那段長描述），`countNumberOfWaits()` 也認得，所以按一下就翻頁、talk delay 會跟著重算。
-
-每頁行數上限**依當前畫面的文字區高度推算**，不寫死：`_screenB > 0` 時用它（片頭 16 / 13 = 1 行），否則用房間畫面高度（144 / 13 ≈ 11 行）。並且只對真的含中文的訊息生效——純 ASCII 的原版字幕維持 8px 兩行，不該被改成一頁一頁按。
-
-### 10. `script_v2.cpp` `o2_verbOps()` — 指令列改 2 列排版
-
-原版 15 個指令是 5 欄 × 3 列 × 8px（畫面 y 152–175，共 24px）。中文字高 12px 塞不進 8px 列距，但 24px 剛好等於 2 列 × 12px，所以改成 8 + 7 的兩列，**完整留在原有區帶內，不動畫面其他部分**。
-
-欄距 40px；譯文用 `@` 補到 5 bytes，`drawVerb()` 算出的 `curRect.right = left + (6-1)*8 = left + 40` 剛好等於欄距，中文指令最寬 2 字 = 24px，相鄰指令的可點範圍不會重疊。`drawVerb()` 用 `curRect.top/left` 定位、`curRect.bottom` 由實際字串範圍決定，所以看到的位置與點到的位置自然一致，`findVerbAtPos()` 不必改。
-
-判斷條件是「資源長度剛好 6」，因此：片頭裝飾用的長字串、選角名牌、存檔欄位都不受影響；指令若還是英文（原始長度 8–10）這段也不會生效，patch 會自動失效而不是弄壞畫面。
-
-### 11. `verbs.cpp` `initV2MouseOver()` / `redrawV2Inventory()` — 物品欄列距與截字
-
-物品欄兩列改成 11px 列距、起點下移到 34（指令畫面 56px 的配置：句子列 0–11、指令兩列 11–35、物品欄 34–55）。
-
-另外原本的 `strncpy(msg, tmp, maxChars)` 是按 byte 截斷，可能把雙位元組字砍成半個（只留首碼）→ 畫面上出現一個亂碼字。改成往前掃到最後一個完整的字再切。
-
-### 12. `string.cpp` `ScummEngine_v2::drawSentence()` — 句子列清除高度
-
-原本只清 8px，中文句子列高 12px 會在下緣留下殘影。清到 11px（指令第一列從 11 開始，各自負責自己的區塊）。
-
-## ScummTR
+## ScummTR（2 個檔）
 
 ### A. `block.cpp` `OldRoom::_cleanup()` — 保留共用的物件圖位移
 
-以 `SCUMMTR_PRESERVE_AMBIGUOUS_OI` 開關包住。詳細根因分析見 `00-engine-verification.md`。
+以 `SCUMMTR_PRESERVE_AMBIGUOUS_OI` 開關包住。根因分析見 `00-engine-verification.md`。
 
 ### B. `block.cpp` `LFLFile` / `OldLFLFile` 建構子 — 保留原版自帶的死索引
 
@@ -109,7 +113,7 @@ CJK 模式原本一律回 `MAX(_2byteHeight + 1, _fontHeight)` = 13。但 v2 的
 
 以 `SCUMMTR_CJK_CUSTOM_CODESPACE` 開關包住。原本 `_spaceCharToBit()` 遇到任何 ≥ 0x80 的位元組就 `throw Text::Error("char > 0x80 in line %i")`，中文連 import 都進不去。改成：首碼落在 `0x88–0x9F` 時，該位元組與下一個原樣通過、不參與空白壓縮。`_spaceBitToChar()`（匯出方向）同步處理，這樣中文版本也能再抽出來比對。
 
-### 建置參數
+## 建置參數
 
 ```bash
 # ScummTR
