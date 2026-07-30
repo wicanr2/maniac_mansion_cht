@@ -120,7 +120,7 @@ python3 tra_codec.py keys German.tra French.tra Spanish.tra -o english.txt
 python3 tra_codec.py build zh.tsv -o Chinese.tra --utf8
 ```
 
-## 中文顯示：兩個機制看起來讓引擎不必改
+## 中文顯示：翻譯與字型替換都不必改引擎，只有字型尺寸要
 
 讀 ScummVM 的 AGS 引擎原始碼後，有兩件事對中文化很關鍵：
 
@@ -133,7 +133,7 @@ python3 tra_codec.py build zh.tsv -o Chinese.tra --utf8
 Translation initialized: Chinese (format: utf-8)
 ```
 
-畫面上「我確定看到佛瑞德博士把珊蒂帶進來。」「現在只能靠我們把她救出來。」逐字正確，沒有亂碼。**Deluxe 這條線不需要修引擎**，與 SCUMM v2 那邊完全相反。
+畫面上「我確定看到佛瑞德博士把珊蒂帶進來。」「現在只能靠我們把她救出來。」逐字正確，沒有亂碼。**編碼與字型替換這兩件事完全不必動引擎**——與 SCUMM v2 那邊要 4 個檔 134 行相比是另一個世界。（唯一需要修補的是字型尺寸，13 行，見下。）
 
 實作細節：
 
