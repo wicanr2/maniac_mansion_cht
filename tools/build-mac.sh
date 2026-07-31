@@ -58,6 +58,29 @@ for arch in arm64 x86_64; do
     make install >/dev/null )
 done
 
+# ---- 1c. FreeType per-arch（AGS 的 TTF 一定要它）----
+# AGS 雖然 bundle 了 lib/freetype-2.1.3，但 ScummVM 的 AGS 引擎要的是
+# USE_FREETYPE2；帶 --disable-freetype2 的話 Deluxe 一啟動就
+# "Game needs FreeType library, which was not included in this build!"。
+# ScummVM 靠 freetype-config 偵測，所以要 --enable-freetype-config。
+curl -fsSL -o "$WORK/freetype.tar.xz" \
+  "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz"
+for arch in arm64 x86_64; do
+  rm -rf "$WORK/ft-src-$arch"; mkdir -p "$WORK/ft-src-$arch"
+  tar xf "$WORK/freetype.tar.xz" -C "$WORK/ft-src-$arch" --strip-components=1
+  P="$WORK/sdl-$arch"
+  runner=""; [ "$arch" = x86_64 ] && runner="arch -x86_64"
+  ( cd "$WORK/ft-src-$arch"
+    $runner env CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+                LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+      ./configure --prefix="$P" --enable-static --disable-shared --enable-freetype-config \
+        --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no \
+        --host="$( [ "$arch" = x86_64 ] && echo x86_64-apple-darwin || echo aarch64-apple-darwin )" \
+        >/dev/null
+    $runner make -j"$(sysctl -n hw.ncpu)" >/dev/null
+    make install >/dev/null )
+done
+
 # ---- 2. ScummVM per-arch（SCUMM + AGS）----
 for arch in arm64 x86_64; do
   P="$WORK/sdl-$arch"
@@ -73,7 +96,8 @@ for arch in arm64 x86_64; do
         --enable-release --disable-debug \
         --with-sdl-prefix="$P/bin" \
         --with-mad-prefix="$P" \
-        --disable-fluidsynth --disable-flac --disable-png --disable-freetype2 \
+        --with-freetype2-prefix="$P" \
+        --disable-fluidsynth --disable-flac --disable-png \
         --disable-jpeg --disable-gif --disable-mpeg2 --disable-vpx --disable-tremor \
         --disable-mikmod --disable-openmpt --disable-fribidi --disable-retrowave \
         --disable-vorbis --disable-faad --disable-theoradec --disable-a52 \
