@@ -42,11 +42,19 @@ done
 # config.mk 裡從 "ENABLE_AGS = STATIC_PLUGIN" 變成 "# ENABLE_AGS"。
 curl -fsSL -o "$WORK/libmad.tar.gz" \
   "https://downloads.sourceforge.net/mad/libmad-0.15.1b.tar.gz"
+# libmad 附的 config.sub/config.guess 是 2004 年的，認不得 aarch64-apple-darwin，
+# 會噴 "config.sub -apple-darwin23.6.0 failed"。換成新版即可。
+curl -fsSL -o "$WORK/config.sub" \
+  "https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.sub;hb=HEAD"
+curl -fsSL -o "$WORK/config.guess" \
+  "https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD"
 for arch in arm64 x86_64; do
   rm -rf "$WORK/mad-src-$arch"; mkdir -p "$WORK/mad-src-$arch"
   tar xf "$WORK/libmad.tar.gz" -C "$WORK/mad-src-$arch" --strip-components=1
   P="$WORK/sdl-$arch"          # 與 SDL 裝在同一個 prefix，方便 configure 找
   runner=""; [ "$arch" = x86_64 ] && runner="arch -x86_64"
+  cp "$WORK/config.sub" "$WORK/config.guess" "$WORK/mad-src-$arch/"
+  chmod +x "$WORK/mad-src-$arch/config.sub" "$WORK/mad-src-$arch/config.guess"
   ( cd "$WORK/mad-src-$arch"
     sed -i '' 's/-fforce-mem//g' configure     # 1998 年的旗標，現代 clang 不認
     $runner env CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
