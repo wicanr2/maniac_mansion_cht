@@ -12,6 +12,7 @@
 | 引擎修補 | 4 個檔 +134 行 | 1 個檔 +13 行（TTF 名目尺寸） |
 | 實機驗證 | ✅ 多場景 | ✅ 多場景 |
 | 本機發佈包 | ✅ `dist-all/`，與 Deluxe 共用同一支 binary | ✅ 同上 |
+| 三平台包 | ✅ AppImage / Windows zip / macOS .app（full + patch 各一） | ✅ 同一批包裡 |
 
 一支 `bin/scummvm` 同時編進 SCUMM 與 AGS 兩個引擎，兩邊的修補都在裡面；
 `play.sh` 跑 v2 中文版，`play-deluxe.sh` 跑 Deluxe 中文版。
@@ -50,6 +51,20 @@ ScummVM 有 CLIB 讀取器可以參考，但要自己寫 sprite 檔的寫入端�
 **指令按鈕不吃合成滑鼠點擊。** 驗證時用 xdotool 點按鈕沒有反應，改用遊戲
 自己的熱鍵（`a_button_*` 定義的 s/w/a/d/x…）就正常。這是自動化的限制，
 不是遊戲的問題——真人用滑鼠玩不受影響。
+
+## 三平台包（2026-07-31）
+
+| 平台 | 包 | 驗證 |
+|---|---|---|
+| Linux | `maniac-mansion-cht-{full,patch}-x86_64.AppImage` | ✅ 容器內實跑：v2 進中文標題、Deluxe 出 `Translation initialized: Chinese` |
+| Windows | `maniac-mansion-cht-{full,patch}-windows-x64.zip` | ✅ wine 實跑：v2 中文標題、Deluxe「請再選兩個人」 |
+| macOS | `maniac-mansion-cht-{full,patch}-macos-universal.tar.gz` | ⚠️ CI 建置成功、雙弧與兩個引擎都在（`Engines (builtin): SCUMM / Adventure Game Studio`），但**沒有 Mac 可實跑**——請在 Mac 上先跑 `修復-macOS.command` 再開 |
+
+三個雷都是**實跑才抓得到**的（靜態檢查看不出來），細節在 `60-packaging.md`：
+
+1. AGS 的 `configure.engine` 寫著 deps `16bit mad`，帶 `--disable-mad` 會讓 configure **不報錯地**把 AGS 關掉，`config.mk` 從 `ENABLE_AGS = STATIC_PLUGIN` 變成 `# ENABLE_AGS`，跑 Deluxe 才出現 `Could not find suitable engine plugin`。
+2. AGS 的 TTF 走的是 **ScummVM 的 FreeType**，不是它自帶的 `lib/freetype-2.1.3`；`--disable-freetype2` 會讓 Deluxe 一啟動就 `Game needs FreeType library`。
+3. mingw：複製 source 樹時 `--exclude=config.h` 沒錨定路徑會連 Munt 的版本標頭一起排掉；`/usr/x86_64-w64-mingw32/bin` 進 PATH 會讓 native g++ 撿到 mingw 的 `as`。
 
 ## 待辦
 

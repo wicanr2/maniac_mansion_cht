@@ -35,6 +35,26 @@ if [ ! -f "$PREFIX/lib/libmad.a" ]; then
     cd /w
 fi
 
+# ---- 1c. FreeType（AGS 的 TTF 一定要它）----
+# 一開始以為 AGS 自帶 lib/freetype-2.1.3 就夠，實跑才知道不是：帶了
+# --disable-freetype2 之後，Deluxe 一啟動就 "Game needs FreeType library,
+# which was not included in this build!"。ScummVM 是靠 freetype-config
+# 這支腳本偵測的，所以 FreeType 要加 --enable-freetype-config 編。
+if [ ! -f "$PREFIX/bin/freetype-config" ]; then
+    cd /tmp
+    curl -fsSL -o freetype.tar.xz \
+      "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz"
+    rm -rf freetype-2.13.2 && tar xf freetype.tar.xz
+    cd freetype-2.13.2
+    ./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" \
+        --enable-static --disable-shared --enable-freetype-config \
+        --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no \
+        > /tmp/ft-conf.log 2>&1 || { tail -20 /tmp/ft-conf.log; exit 1; }
+    make -j"$(nproc)" > /tmp/ft-make.log 2>&1 || { tail -20 /tmp/ft-make.log; exit 1; }
+    make install > /dev/null
+    cd /w
+fi
+
 # ---- 2. 另一棵 source 樹（含 config.guess/config.sub）----
 # [雷] 複製過來的樹裡有 Linux 那次的 config.mk / config.h / config.log。留著的話
 #      configure 會被跳過、直接用「native g++ ＋ mingw as」去編 → 組譯器讀到 ELF 的
@@ -61,7 +81,8 @@ if [ ! -f config.mk ]; then
         --disable-all-engines --enable-engine=scumm --enable-engine=ags \
         --enable-release --disable-debug \
         --with-sdl-prefix="$PREFIX" \
-        --disable-fluidsynth --disable-flac --disable-png --disable-freetype2 \
+        --with-freetype2-prefix="$PREFIX" \
+        --disable-fluidsynth --disable-flac --disable-png \
         --disable-jpeg --disable-gif --disable-mpeg2 --disable-vpx --disable-tremor \
         --disable-mikmod --disable-openmpt --disable-fribidi --disable-retrowave \
         --disable-vorbis --disable-faad --disable-theoradec --disable-a52 \

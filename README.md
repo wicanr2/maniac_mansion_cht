@@ -130,6 +130,20 @@ docs/               技術文件
 
 細節見 [`docs/40-deluxe.md`](docs/40-deluxe.md)，現況與已知限制見 [`docs/50-status.md`](docs/50-status.md)。
 
+## 怎麼跑起來
+
+三個平台各出一支自編的 ScummVM，**同一支 binary 同時含 SCUMM 與 AGS 兩個引擎**，所以 1988 年的原版與 2004 年的 Deluxe 都用它跑。
+
+| 平台 | 產物 | 怎麼做出來的 |
+|---|---|---|
+| Linux | `.AppImage` | 本機 docker 建置，`appimagetool --appimage-extract-and-run` |
+| Windows | `.zip`（`scummvm.exe` + DLL） | mingw-w64 交叉編，用 wine 實跑驗過 |
+| macOS | `.app`（universal，arm64 + x86_64） | GitHub Actions `macos-14`，每弧各編再 `lipo` 合併 |
+
+每個平台各兩種包：**full** 內嵌中文化好的遊戲、開了就能玩，只留本機；**patch** 只有引擎與中文資料，玩家自備遊戲。
+
+建置與打包的完整說明、以及這一路踩到的雷（AGS 的 libmad 相依會被 configure 靜靜關掉、AGS 的 TTF 要的是 ScummVM 的 FreeType 而不是它自帶那份、mingw 的 `config.h` exclude 要錨定路徑⋯⋯）見 [`docs/60-packaging.md`](docs/60-packaging.md)。
+
 ## 授權與版權
 
 * 本專案自己的產出（patch、工具、譯文、文件）採 MIT。
