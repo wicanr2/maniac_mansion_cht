@@ -27,8 +27,19 @@ build_appdir() {   # $1 = full | patch
     # 中文資料（字型與 Deluxe 翻譯檔）——兩種包都要，否則玩家看不到中文
     cp game-cht/mansiond/chinese_gb16x12.fnt "$D/usr/share/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$D/usr/share/cht/"
-    cp deluxe/game-cht/agsfnt0.ttf "$D/usr/share/cht/agsfnt0.ttf"
-    cp deluxe/game-cht/agsfnt1.ttf "$D/usr/share/cht/agsfnt-speech.ttf"
+    cp deluxe/fonts/agsfnt-zh.ttf "$D/usr/share/cht/agsfnt-zh.ttf"
+    cat > "$D/usr/share/cht/安裝到-Deluxe.sh" <<'SH'
+#!/bin/sh
+# 用法：安裝到-Deluxe.sh <Maniac Mansion Deluxe 遊戲夾>
+# 中文字型要佔滿 0–14 號字型槽：640×400 模式下遊戲改用 13/14 號槽，漏了就掉回內建點陣字。
+set -eu
+G=${1:?用法: $0 <遊戲夾>}
+H=$(dirname "$(readlink -f "$0")")
+cp "$H/Chinese.tra" "$H/acsetup.cfg" "$G/"
+i=0; while [ $i -le 14 ]; do cp "$H/agsfnt-zh.ttf" "$G/agsfnt$i.ttf"; i=$((i+1)); done
+echo "裝好了。啟動時記得帶 --config=$H/scummvm.ini"
+SH
+    chmod +x "$D/usr/share/cht/安裝到-Deluxe.sh"
 
     if [ "$KIND" = full ]; then
         mkdir -p "$D/usr/share/game" "$D/usr/share/deluxe"
@@ -36,7 +47,7 @@ build_appdir() {   # $1 = full | patch
         cp -r deluxe/game-cht/. "$D/usr/share/deluxe/"
     fi
 
-    printf '[scummvm]\nags_ttf_font_size=16\n' > "$D/usr/share/cht/scummvm.ini"
+    printf '[scummvm]\nags_ttf_font_size=24\n' > "$D/usr/share/cht/scummvm.ini"
 
     cat > "$D/AppRun" <<'SH'
 #!/bin/sh
@@ -53,9 +64,8 @@ case "${1:-}" in
            --config="$CHT/scummvm.ini" --no-aspect-ratio "$@"
     fi
     echo "此為 patch 版，請自備 Maniac Mansion Deluxe 遊戲夾："
-    echo "  1. 把 $CHT 裡的 Chinese.tra / acsetup.cfg 複製進遊戲夾"
-    echo "  2. agsfnt-speech.ttf 複製成 agsfnt1.ttf…agsfnt7.ttf，agsfnt0.ttf 直接用"
-    echo "  3. $0 deluxe --path=<遊戲夾>"
+    echo "  1. sh \"$CHT/安裝到-Deluxe.sh\" <遊戲夾>"
+    echo "  2. $0 deluxe --path=<遊戲夾>"
     exec "$BIN" --config="$CHT/scummvm.ini" --no-aspect-ratio "$@"
     ;;
   *)

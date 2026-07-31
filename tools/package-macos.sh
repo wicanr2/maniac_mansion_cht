@@ -23,9 +23,20 @@ pack() {   # $1 = full | patch
     mkdir -p "$APP/Contents/Resources/cht"
     cp game-cht/mansiond/chinese_gb16x12.fnt "$APP/Contents/Resources/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$APP/Contents/Resources/cht/"
-    cp deluxe/game-cht/agsfnt0.ttf "$APP/Contents/Resources/cht/agsfnt0.ttf"
-    cp deluxe/game-cht/agsfnt1.ttf "$APP/Contents/Resources/cht/agsfnt-speech.ttf"
-    printf '[scummvm]\nags_ttf_font_size=16\n' > "$APP/Contents/Resources/cht/scummvm.ini"
+    cp deluxe/fonts/agsfnt-zh.ttf "$APP/Contents/Resources/cht/agsfnt-zh.ttf"
+    printf '[scummvm]\nags_ttf_font_size=24\n' > "$APP/Contents/Resources/cht/scummvm.ini"
+    cat > "$APP/Contents/Resources/cht/安裝到-Deluxe.sh" <<'SH'
+#!/bin/sh
+# 用法：安裝到-Deluxe.sh <Maniac Mansion Deluxe 遊戲夾>
+# 中文字型要佔滿 0–14 號字型槽：640×400 模式下遊戲改用 13/14 號槽。
+set -eu
+G=${1:?用法: $0 <遊戲夾>}
+H=$(cd "$(dirname "$0")" && pwd)
+cp "$H/Chinese.tra" "$H/acsetup.cfg" "$G/"
+i=0; while [ $i -le 14 ]; do cp "$H/agsfnt-zh.ttf" "$G/agsfnt$i.ttf"; i=$((i+1)); done
+echo "裝好了。啟動時記得帶 --config=$H/scummvm.ini"
+SH
+    chmod +x "$APP/Contents/Resources/cht/安裝到-Deluxe.sh"
 
     if [ "$KIND" = full ]; then
         mkdir -p "$APP/Contents/Resources/game" "$APP/Contents/Resources/deluxe"

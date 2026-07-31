@@ -23,19 +23,17 @@ rm -f $G/*.tra                       # 只留中文，免得自動挑到別的�
 
 python3 $T/tra_codec.py build deluxe/dumps/zh_all.tsv -o $G/Chinese.tra --utf8
 
-# 字型分兩種尺寸：
-#   slot 0（GUI 與句子列）—— 選單按鈕的框是固定大小的圖，16px 中文會撐出框外，
-#                            所以把字形縮到 0.7（改 unitsPerEm，行距仍是名目 16，
-#                            單行標籤不受影響）。
-#   slot 1 以上（對白）  —— 維持原尺寸，對白要看得清楚。
+# 字型：全部槽位同一份、同一個尺寸。
+# 遊戲跑在 640×400（見下方 acsetup.cfg 的 upscale），對白與 GUI 都用 24px；
+# 24px 在 640 畫面上等於原本 320 畫面的 12px，字形細節放得下，也不會撐破選單按鈕框。
+# 高解析模式下遊戲改用 13/14 號字型槽，所以 0–20 全部給同一份，免得漏槽掉回內建點陣字。
 python3 $T/make_ags_font.py /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc \
     -o deluxe/fonts/agsfnt-zh.ttf --scale 1 --subset-from deluxe/dumps/zh_all.tsv --fail-on-missing
-python3 $T/make_ags_font.py /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc \
-    -o deluxe/fonts/agsfnt-zh-gui.ttf --scale 0.7 --subset-from deluxe/dumps/zh_all.tsv
-cp deluxe/fonts/agsfnt-zh-gui.ttf $G/agsfnt0.ttf
-for i in 1 2 3 4 5 6 7; do cp deluxe/fonts/agsfnt-zh.ttf $G/agsfnt$i.ttf; done
+for i in $(seq 0 20); do cp deluxe/fonts/agsfnt-zh.ttf $G/agsfnt$i.ttf; done
 
-printf '[language]\ntranslation=Chinese\n' > $G/acsetup.cfg
+# upscale=1 讓 AGS 把這款 2.x 遊戲以 640×400 跑（engine/main/game_file.cpp:192），
+# 中文才有足夠的像素畫得清楚；純資料設定，不必動引擎。
+printf '[language]\ntranslation=Chinese\n[override]\nupscale=1\n' > $G/acsetup.cfg
 
 # 回讀驗證：把產出的 .tra 解回來，逐行與來源比對
 python3 - <<'PY'

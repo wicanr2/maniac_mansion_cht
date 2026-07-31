@@ -23,9 +23,11 @@ pack() {   # $1 = full | patch
 
     cp game-cht/mansiond/chinese_gb16x12.fnt "$D/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$D/cht/"
-    cp deluxe/game-cht/agsfnt0.ttf "$D/cht/agsfnt0.ttf"
-    cp deluxe/game-cht/agsfnt1.ttf "$D/cht/agsfnt-speech.ttf"
-    printf '[scummvm]\r\nags_ttf_font_size=16\r\n' > "$D/cht/scummvm.ini"
+    cp deluxe/fonts/agsfnt-zh.ttf "$D/cht/agsfnt-zh.ttf"
+    printf '[scummvm]\r\nags_ttf_font_size=24\r\n' > "$D/cht/scummvm.ini"
+    # 中文字型要佔滿 0–14 號槽（640×400 模式下遊戲改用 13/14 號槽）
+    printf '@echo off\r\nsetlocal\r\nif "%%~1"=="" (echo 用法： %%~nx0 ^<Maniac Mansion Deluxe 遊戲夾^> ^& pause ^& exit /b 1)\r\ncopy /y "%%~dp0Chinese.tra" "%%~1" >nul\r\ncopy /y "%%~dp0acsetup.cfg" "%%~1" >nul\r\nfor /l %%%%i in (0,1,14) do copy /y "%%~dp0agsfnt-zh.ttf" "%%~1\\agsfnt%%%%i.ttf" >nul\r\necho 裝好了。\r\npause\r\n' \
+        > "$D/cht/安裝到-Deluxe.bat"
 
     if [ "$KIND" = full ]; then
         mkdir -p "$D/game" "$D/deluxe"
@@ -45,9 +47,10 @@ pack() {   # $1 = full | patch
 
 scummvm.exe 是自編的 ScummVM，同時含 SCUMM 與 AGS 兩個引擎，並含本專案的修補：
   engines/scumm —— v2 的 CJK 路徑、16x15 倚天字型、640x400 hi-res 文字表面
-  engines/ags   —— 可用 ags_ttf_font_size 覆寫 TTF 名目尺寸（Deluxe 用 16）
+  engines/ags   —— 可用 ags_ttf_font_size 覆寫 TTF 名目尺寸（Deluxe 用 24）
 
 cht\\ 是中文資料：SCUMM v2 的字型、Deluxe 的譯文與字型。
+自備 Deluxe 遊戲的話，把 cht\\安裝到-Deluxe.bat 拖到遊戲夾上（或帶遊戲夾路徑執行）即可。
 TXT
 
     ( cd /tmp && zip -qr "/w/$OUT/maniac-mansion-cht-$KIND-windows-x64.zip" "mmwin-$KIND" -x '*.DS_Store' )

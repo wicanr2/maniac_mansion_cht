@@ -9,6 +9,22 @@
 | **full** | ✅ 整份中文化遊戲 | 只留本機 `dist-all/`（gitignore） | 啟動器直指內嵌遊戲，開了就能玩 |
 | **patch** | ❌ 只有引擎＋中文資料 | 可公開發佈，玩家自備遊戲 | 需自己指路徑；中文資料在 `cht/` |
 
+## patch 版的中文資料長什麼樣
+
+`cht/` 裡放的是「引擎之外、玩家自己要塞進遊戲夾」的東西：
+
+| 檔案 | 給誰 |
+|---|---|
+| `chinese_gb16x12.fnt` | SCUMM v2（倚天 16×15 點陣字） |
+| `Chinese.tra`、`acsetup.cfg` | Deluxe（譯文＋選語言＋`upscale=1`） |
+| `agsfnt-zh.ttf` | Deluxe 的中文字型（一份） |
+| `安裝到-Deluxe.sh` / `.bat` | 把上面三個裝進遊戲夾 |
+| `scummvm.ini` | 只有一行 `ags_ttf_font_size=24` |
+
+字型只放**一份**、由安裝腳本複製成 `agsfnt0.ttf` … `agsfnt14.ttf`。要鋪到 14 是因為 640×400
+模式下遊戲改用 13/14 號字型槽（見 `40-deluxe.md`）；直接塞 15 份進包裡會多 5 MB，
+而 zip 對重複檔案沒有去重。
+
 ## 一個會靜靜壞掉的相依：AGS 需要 libmad
 
 `engines/ags/configure.engine` 這一行是關鍵：

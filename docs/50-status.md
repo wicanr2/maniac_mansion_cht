@@ -8,7 +8,8 @@
 |---|---|---|
 | 文字量 | 1139 行 | 1219 行 |
 | 翻譯 | ✅ 完成（118 行刻意留原文，1 行抽不出來） | ✅ **1219 / 1219 完成** |
-| 字型 | 倚天 16×15 原生點陣（`chinese_gb16x12.fnt`） | WQY Zen Hei TTF，依譯文精簡（1238 字 / 371 KB）；`agsfnt0`（GUI／句子列）縮 0.7 倍，其餘原尺寸 |
+| 畫面 | 640×400（引擎修補拉 hi-res 文字表面） | 640×400（`acsetup.cfg` 的 `[override] upscale=1`，純資料） |
+| 字型 | 倚天 16×15 原生點陣（`chinese_gb16x12.fnt`） | WQY Zen Hei TTF 24px，依譯文精簡（1238 字 / 371 KB），鋪滿 0–14 號字型槽 |
 | 引擎修補 | 4 個檔 +134 行 | 1 個檔 +13 行（TTF 名目尺寸） |
 | 實機驗證 | ✅ 多場景 | ✅ 多場景 |
 | 本機發佈包 | ✅ `dist-all/`，與 Deluxe 共用同一支 binary | ✅ 同上 |
@@ -17,7 +18,7 @@
 一支 `bin/scummvm` 同時編進 SCUMM 與 AGS 兩個引擎，兩邊的修補都在裡面；
 `play.sh` 跑 v2 中文版，`play-deluxe.sh` 跑 Deluxe 中文版。
 
-## Deluxe 驗證涵蓋（實機截圖為憑）
+## Deluxe 驗證涵蓋（實機截圖為憑，640×400 版重跑過一次）
 
 | 畫面／路徑 | 結果 |
 |---|---|
@@ -25,12 +26,13 @@
 | 標題／選角：提示與七位主角簡介 | ✅ 例如「溫蒂——想成為知名小說家，正在等一個大機會。」 |
 | 開場三人對話 | ✅ 逐句中文 |
 | 製作名單的分類標題 | ✅ 設計／美術／音樂／翻譯 |
-| 句子列（指令 + 物件名） | ✅ 「走到 標示」「查看 標示」「走到 灌木叢」 |
+| 句子列（指令 + 物件名／人名） | ✅ 「走到 標示」「查看 標示」「交談 賽德」 |
+| 進遊戲後的角色對白 | ✅ 「我們可以找找看鑰匙……」（含刪節號） |
 | 動作回應對白 | ✅ 查看告示牌 →「警告！！」「……殘忍地大卸八塊。」 |
 | 換場景後 | ✅ 物件名仍為中文 |
 | 自動換行 | ✅ 長句正確折成兩行，不重疊 |
 | 遊戲選單（F5） | ✅ 「有什麼可以為您效勞的？」＋存檔／載入／開始／離開，各自落在按鈕框內 |
-| 從發佈包啟動 | ✅ `play-deluxe.sh` 直接進中文標題 |
+| 從發佈包啟動 | ✅ AppImage 與 Windows zip 都實跑到中文標題，log 有 `640 x 400` 與 `Translation initialized: Chinese` |
 
 ## 已知限制
 
@@ -65,6 +67,20 @@ ScummVM 有 CLIB 讀取器可以參考，但要自己寫 sprite 檔的寫入端�
 1. AGS 的 `configure.engine` 寫著 deps `16bit mad`，帶 `--disable-mad` 會讓 configure **不報錯地**把 AGS 關掉，`config.mk` 從 `ENABLE_AGS = STATIC_PLUGIN` 變成 `# ENABLE_AGS`，跑 Deluxe 才出現 `Could not find suitable engine plugin`。
 2. AGS 的 TTF 走的是 **ScummVM 的 FreeType**，不是它自帶的 `lib/freetype-2.1.3`；`--disable-freetype2` 會讓 Deluxe 一啟動就 `Game needs FreeType library`。
 3. mingw：複製 source 樹時 `--exclude=config.h` 沒錨定路徑會連 Munt 的版本標頭一起排掉；`/usr/x86_64-w64-mingw32/bin` 進 PATH 會讓 native g++ 撿到 mingw 的 `as`。
+
+## Deluxe 改跑 640×400（2026-07-31 修）
+
+原本 Deluxe 跑在遊戲原生的 320×200，16px 中文再被顯示層放大一次，筆畫粗細不均。
+AGS 對 3.1 以前的遊戲留了 upscale 路徑，在 `acsetup.cfg` 加 `[override] upscale=1`
+就變成 640×400，**純資料設定、不必動引擎**；字級改 24（等於原本畫面的 12px）。
+
+連帶兩個發現（細節在 `40-deluxe.md`）：
+
+* 譯文裡的 `font_320` / `font_640` 是**字型槽編號表**（21 種文字情境各用哪一號槽），
+  不是位移。320 模式用 {1, 0, 3} 號槽，**640 模式改用 {13, 14}**，所以中文字型要鋪滿
+  0–14 號槽，漏了會掉回內建點陣字。
+* 字型改回 WQY Zen Hei：華康超圓體在 24px 下筆畫互相吃掉。順帶把人名間隔號從
+  U+2027（WQY 沒有這個字）換成三種字型都有的 U+00B7。
 
 ## 待辦
 
