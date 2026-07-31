@@ -36,6 +36,28 @@ for arch in arm64 x86_64; do
     make install >/dev/null )
 done
 
+# ---- 1b. libmad per-arch（AGS 的相依，configure.engine 寫著 deps "16bit mad"）----
+# 沒有它 configure 會靜靜地關掉 AGS，編出來的 binary 跑 Deluxe 會說
+# "Could not find suitable engine plugin"——而且 configure 不會報錯，只有
+# config.mk 裡從 "ENABLE_AGS = STATIC_PLUGIN" 變成 "# ENABLE_AGS"。
+curl -fsSL -o "$WORK/libmad.tar.gz" \
+  "https://downloads.sourceforge.net/mad/libmad-0.15.1b.tar.gz"
+for arch in arm64 x86_64; do
+  rm -rf "$WORK/mad-src-$arch"; mkdir -p "$WORK/mad-src-$arch"
+  tar xf "$WORK/libmad.tar.gz" -C "$WORK/mad-src-$arch" --strip-components=1
+  P="$WORK/sdl-$arch"          # 與 SDL 裝在同一個 prefix，方便 configure 找
+  runner=""; [ "$arch" = x86_64 ] && runner="arch -x86_64"
+  ( cd "$WORK/mad-src-$arch"
+    sed -i '' 's/-fforce-mem//g' configure     # 1998 年的旗標，現代 clang 不認
+    $runner env CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+                LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+      ./configure --prefix="$P" --enable-static --disable-shared \
+        --host="$( [ "$arch" = x86_64 ] && echo x86_64-apple-darwin || echo aarch64-apple-darwin )" \
+        >/dev/null
+    $runner make -j"$(sysctl -n hw.ncpu)" >/dev/null
+    make install >/dev/null )
+done
+
 # ---- 2. ScummVM per-arch（SCUMM + AGS）----
 for arch in arm64 x86_64; do
   P="$WORK/sdl-$arch"
@@ -50,10 +72,11 @@ for arch in arm64 x86_64; do
       ./configure --disable-all-engines --enable-engine=scumm --enable-engine=ags \
         --enable-release --disable-debug \
         --with-sdl-prefix="$P/bin" \
+        --with-mad-prefix="$P" \
         --disable-fluidsynth --disable-flac --disable-png --disable-freetype2 \
         --disable-jpeg --disable-gif --disable-mpeg2 --disable-vpx --disable-tremor \
         --disable-mikmod --disable-openmpt --disable-fribidi --disable-retrowave \
-        --disable-vorbis --disable-mad --disable-faad --disable-theoradec --disable-a52 \
+        --disable-vorbis --disable-faad --disable-theoradec --disable-a52 \
         --disable-libcurl --disable-sndio --disable-timidity --disable-sparkle \
         --disable-eventrecorder
     # 守門：兩個引擎都要在
