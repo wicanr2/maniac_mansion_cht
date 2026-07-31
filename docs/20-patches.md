@@ -69,10 +69,10 @@ c &= 0x7f;                       // ← 中文首碼會在這裡被砍掉
 
 1. **`loadCJKFont()` 的版本 gate** —— 原本是 `_game.version >= 3 && _language == ZH_CHN`，把 SCUMM v1/v2 整批擋在外面。Zak 是 v3，當年只需在裡層的 GID 白名單加一筆；本作是 v2，連外層版本判斷都過不了。
 2. **ZH_CHN 分支加入 `GID_MANIAC`** —— 設 `fontFile = "chinese_gb16x12.fnt"`、`numChar = 2232`。字型檔名沿用原本的，因為 `detection_internal.h` 的 `detectLanguage()` 就是看這個檔名決定要不要切 ZH_CHN，而它**沒有版本限制**，偵測那一側不必改。
-3. **字模尺寸與 hi-res** —— `_2byteWidth = 16`、`_2byteHeight = 15`、`_textSurfaceMultiplier = 2`。
+3. **字模尺寸與 hi-res** —— `_textSurfaceMultiplier = 2`，字模尺寸**由字型檔的大小決定**：`numChar × 30` bytes 是 16×15（倚天 15 點）、`numChar × 72` 是 24×24（倚天 24 點）。這樣換字型檔就等於換尺寸，不必另外開設定。
 4. **`get2byteCharPtr()`** —— 自訂索引公式，並對範圍外的組合回第 0 個字形而不是算出負索引。
-5. **`CharsetRendererCommon::getFontHeight()`** —— CJK 模式原本回 `MAX(_2byteHeight + 1, _fontHeight)`；hi-res 下這裡要的是**邏輯**行高，回 `_fontHeight`（8），比照 `CharsetRendererTownsV3` 的做法。
-6. **`CharsetRendererV3::getDrawWidthIntern()` / `getDrawHeightIntern()`** —— 回**字模**尺寸 16／15。後者原本固定回 8，會把中文字截成上半段，畫面上看起來像橫條噪點而不是「字太小」。
+5. **`CharsetRendererCommon::getFontHeight()`** —— CJK 模式原本回 `MAX(_2byteHeight + 1, _fontHeight)`；hi-res 下這裡要的是**邏輯**行高，改回 `MAX(_2byteHeight / _textSurfaceMultiplier, _fontHeight)`——16×15 得 8（與原版同）、24×24 得 12。比照 `CharsetRendererTownsV3` 的做法。
+6. **`CharsetRendererV3::getDrawWidthIntern()` / `getDrawHeightIntern()`** —— 回**字模**尺寸（`_2byteWidth` / `_2byteHeight`）。後者原本固定回 8，會把中文字截成上半段，畫面上看起來像橫條噪點而不是「字太小」。
 7. **`CharsetRendererV3::printChar()`** —— hi-res 模式下**所有**文字都畫到文字表面。原本 `hasTwoBuffers == false` 的畫面（指令列所在的 `kVerbVirtScreen`、片頭字幕的 `kTextVirtScreen`）會把字直接畫進 1 倍的虛擬螢幕；若只把中文導到 2 倍的文字表面、ASCII 留在虛擬螢幕，兩邊清除時機不一致，畫面會出現前後兩則訊息疊字。ASCII 由 `drawBits1()` 既有的 `scale2x` 自動放大。
 
 ### `gfx.cpp`（2 處）
@@ -104,7 +104,10 @@ c &= 0x7f;                       // ← 中文首碼會在這裡被砍掉
 
 12. **`ttf_font_renderer.cpp` 允許用 config 覆寫 TTF 名目尺寸** —— AGS 3.0 以前的遊戲資料裡字型槽沒有 size 欄位，替換進去的 TTF 一律以 8px 載入，中文無法閱讀。這個「名目尺寸」同時決定行距（`FontMetrics.NominalHeight`），所以**不能靠改字型檔繞過**：把字型的 `unitsPerEm` 改小確實會讓字形與推進寬一起放大（用 FreeType 量過），但行距仍停在 8px，上下兩行必疊。
 
-    修補只做一件事：`ags_ttf_font_size` 這個 config 鍵有設就覆寫，沒設完全維持原行為。Deluxe 用 16。詳見 `40-deluxe.md`。
+    修補做兩件事，兩個鍵都是沒設就完全維持原行為：
+
+    * `ags_ttf_font_size` —— 全域覆寫。Deluxe 用 24（畫面跑 640×400）。
+    * `ags_ttf_font_size_<槽號>` —— 單一字型槽覆寫。同一個遊戲裡不同槽的可用空間不一樣：Deluxe 的句子列上方只有約 18px 的空檔，24px 的字下緣會被指令列按鈕的圖蓋掉，所以句子列那一槽（12）另外設 16。詳見 `40-deluxe.md`。
 
 ## ScummTR（2 個檔）
 

@@ -47,7 +47,9 @@ SH
         cp -r deluxe/game-cht/. "$D/usr/share/deluxe/"
     fi
 
-    printf '[scummvm]\nags_ttf_font_size=24\n' > "$D/usr/share/cht/scummvm.ini"
+    # 對白 24px；句子列（font_640 位置 1 → 12 號槽）16px，
+    # 不然字的下緣會被指令列按鈕蓋掉
+    printf '[scummvm]\nags_ttf_font_size=24\nags_ttf_font_size_12=16\n' > "$D/usr/share/cht/scummvm.ini"
 
     cat > "$D/AppRun" <<'SH'
 #!/bin/sh

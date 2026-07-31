@@ -24,7 +24,7 @@ pack() {   # $1 = full | patch
     cp game-cht/mansiond/chinese_gb16x12.fnt "$D/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$D/cht/"
     cp deluxe/fonts/agsfnt-zh.ttf "$D/cht/agsfnt-zh.ttf"
-    printf '[scummvm]\r\nags_ttf_font_size=24\r\n' > "$D/cht/scummvm.ini"
+    printf '[scummvm]\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=16\r\n' > "$D/cht/scummvm.ini"
     # 中文字型要佔滿 0–14 號槽（640×400 模式下遊戲改用 13/14 號槽）
     printf '@echo off\r\nsetlocal\r\nif "%%~1"=="" (echo 用法： %%~nx0 ^<Maniac Mansion Deluxe 遊戲夾^> ^& pause ^& exit /b 1)\r\ncopy /y "%%~dp0Chinese.tra" "%%~1" >nul\r\ncopy /y "%%~dp0acsetup.cfg" "%%~1" >nul\r\nfor /l %%%%i in (0,1,14) do copy /y "%%~dp0agsfnt-zh.ttf" "%%~1\\agsfnt%%%%i.ttf" >nul\r\necho 裝好了。\r\npause\r\n' \
         > "$D/cht/安裝到-Deluxe.bat"

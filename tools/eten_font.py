@@ -17,6 +17,12 @@ DIM15 = (16, 15)
 ROWBYTES15 = 2
 STRIDE15 = ROWBYTES15 * DIM15[1]     # 30
 
+# 24 點（STD.24M 等六種字體，ETUNPACK 壓縮，先用 etunpack.py 解開；
+# 全形標點在 SPCFONT.24 / SPCFSUPP.24，光碟上就是裸格式）
+DIM24 = (24, 24)
+ROWBYTES24 = 3
+STRIDE24 = ROWBYTES24 * DIM24[1]     # 72
+
 # Python big5 codec 與 Big5 表對不上的少數符號，手動補
 MANUAL_BIG5 = {
     "～": b"\xa1\xe3",
@@ -48,12 +54,15 @@ def big5_bytes(ch):
 
 
 class EtenFont:
-    """16x15 倚天字型（STDFONT.15 + SPCFONT.15 + SPCFSUPP.15）。"""
+    """倚天點陣字（STDFONT + SPCFONT + SPCFSUPP），16x15 或 24x24。"""
 
-    def __init__(self, stdfont, spcfont=None, spcfsupp=None):
+    def __init__(self, stdfont, spcfont=None, spcfsupp=None, dim=DIM15):
         self.std = open(stdfont, "rb").read()
         self.spc = open(spcfont, "rb").read() if spcfont else b""
         self.sup = open(spcfsupp, "rb").read() if spcfsupp else b""
+        self.dim = dim
+        self.rowbytes = (dim[0] + 7) // 8
+        self.stride = self.rowbytes * dim[1]
 
     def locate(self, ch):
         """回傳 (blob, idx)；查不到回 None。"""
@@ -68,18 +77,23 @@ class EtenFont:
         return self.std, N_COMMON + (r - BASE_C940)
 
     def bitmap(self, ch):
-        """回傳 15 列 x 16 欄的 0/1 陣列；缺字回 None。"""
+        """回傳 H 列 x W 欄的 0/1 陣列；缺字回 None。"""
         loc = self.locate(ch)
         if loc is None:
             return None
         blob, idx = loc
-        off = idx * STRIDE15
-        if off + STRIDE15 > len(blob):
+        W, H = self.dim
+        off = idx * self.stride
+        if off + self.stride > len(blob):
             return None
         rows = []
-        for y in range(DIM15[1]):
-            v = (blob[off + 2 * y] << 8) | blob[off + 2 * y + 1]
-            rows.append([(v >> (15 - x)) & 1 for x in range(DIM15[0])])
+        for y in range(H):
+            base = off + y * self.rowbytes
+            line = []
+            for x in range(W):
+                b = blob[base + (x >> 3)]
+                line.append((b >> (7 - (x & 7))) & 1)
+            rows.append(line)
         return rows
 
 

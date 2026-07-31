@@ -24,7 +24,7 @@ pack() {   # $1 = full | patch
     cp game-cht/mansiond/chinese_gb16x12.fnt "$APP/Contents/Resources/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$APP/Contents/Resources/cht/"
     cp deluxe/fonts/agsfnt-zh.ttf "$APP/Contents/Resources/cht/agsfnt-zh.ttf"
-    printf '[scummvm]\nags_ttf_font_size=24\n' > "$APP/Contents/Resources/cht/scummvm.ini"
+    printf '[scummvm]\nags_ttf_font_size=24\nags_ttf_font_size_12=16\n' > "$APP/Contents/Resources/cht/scummvm.ini"
     cat > "$APP/Contents/Resources/cht/安裝到-Deluxe.sh" <<'SH'
 #!/bin/sh
 # 用法：安裝到-Deluxe.sh <Maniac Mansion Deluxe 遊戲夾>

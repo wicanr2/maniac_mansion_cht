@@ -1,5 +1,5 @@
 diff --git a/engines/ags/shared/font/ttf_font_renderer.cpp b/engines/ags/shared/font/ttf_font_renderer.cpp
-index fca45307..7326aa29 100644
+index fca45307..b4f4ccf8 100644
 --- a/engines/ags/shared/font/ttf_font_renderer.cpp
 +++ b/engines/ags/shared/font/ttf_font_renderer.cpp
 @@ -19,6 +19,7 @@
@@ -10,7 +10,7 @@ index fca45307..7326aa29 100644
  #include "ags/shared/font/ttf_font_renderer.h"
  #include "ags/lib/alfont/alfont.h"
  #include "ags/shared/core/platform.h"
-@@ -126,6 +127,18 @@ bool TTFFontRenderer::LoadFromDiskEx(int fontNumber, int fontSize, String *src_f
+@@ -126,6 +127,29 @@ bool TTFFontRenderer::LoadFromDiskEx(int fontNumber, int fontSize, String *src_f
  	if (f_params.SizeMultiplier > 1)
  		fontSize *= f_params.SizeMultiplier;
  
@@ -23,6 +23,17 @@ index fca45307..7326aa29 100644
 +		int overrideSize = ConfMan.getInt("ags_ttf_font_size");
 +		if (overrideSize > 0)
 +			fontSize = overrideSize;
++	}
++	// Per-slot override on top of that. Games use different font slots for speech and
++	// for GUI labels, and the space available to each is not the same: in Maniac Mansion
++	// Deluxe the sentence line only has an 18px gap above the verb buttons, so a 24px
++	// speech font would have its lower half painted over by the verb GUI.
++	char perFontKey[40];
++	Common::sprintf_s(perFontKey, "ags_ttf_font_size_%d", fontNumber);
++	if (ConfMan.hasKey(perFontKey)) {
++		int slotSize = ConfMan.getInt(perFontKey);
++		if (slotSize > 0)
++			fontSize = slotSize;
 +	}
 +	debug(1, "AGS: loading TTF font %d at size %d", fontNumber, fontSize);
 +

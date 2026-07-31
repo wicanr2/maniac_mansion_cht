@@ -23,39 +23,45 @@ import json
 import sys
 
 from cht_codec import CAPACITY, font_index
-from eten_font import DIM15, STRIDE15, EtenFont, embolden
+from eten_font import DIM15, DIM24, EtenFont, embolden
 
-GLYPH_BYTES = STRIDE15   # 30
+# 尺寸相關的量在 main() 決定後填進來（16x15 或 24x24）
+DIM = DIM15
+ROWBYTES = 2
+GLYPH_BYTES = ROWBYTES * DIM[1]
 
 
 def rows_to_bytes(rows):
     out = bytearray()
     for r in rows:
-        v = 0
-        for x in range(DIM15[0]):
-            v |= r[x] << (15 - x)
-        out += bytes(((v >> 8) & 0xFF, v & 0xFF))
+        for byte in range(ROWBYTES):
+            v = 0
+            for bit in range(8):
+                x = byte * 8 + bit
+                if x < DIM[0] and r[x]:
+                    v |= 0x80 >> bit
+            out.append(v)
     return bytes(out)
 
 
 def ttf_glyph(face, ch):
-    """Big5 缺字時的備援：從 TTF 描 16x15。"""
+    """Big5 缺字時的備援：從 TTF 描同尺寸點陣。"""
     import freetype
-    face.set_pixel_sizes(0, DIM15[1])
+    face.set_pixel_sizes(0, DIM[1])
     face.load_char(ch, freetype.FT_LOAD_RENDER |
                    freetype.FT_LOAD_TARGET_MONO |
                    freetype.FT_LOAD_MONOCHROME)
     bm = face.glyph.bitmap
-    rows = [[0] * DIM15[0] for _ in range(DIM15[1])]
-    y0 = DIM15[1] - 3 - face.glyph.bitmap_top
+    rows = [[0] * DIM[0] for _ in range(DIM[1])]
+    y0 = DIM[1] - (3 if DIM[1] == 15 else 4) - face.glyph.bitmap_top
     x0 = face.glyph.bitmap_left
     for y in range(bm.rows):
         ty = y0 + y
-        if not 0 <= ty < DIM15[1]:
+        if not 0 <= ty < DIM[1]:
             continue
         for x in range(bm.width):
             tx = x0 + x
-            if not 0 <= tx < DIM15[0]:
+            if not 0 <= tx < DIM[0]:
                 continue
             if bm.buffer[y * bm.pitch + (x >> 3)] & (0x80 >> (x & 7)):
                 rows[ty][tx] = 1
@@ -67,7 +73,10 @@ def main():
     ap.add_argument("table", help="cht_table.json")
     ap.add_argument("-o", "--out", default="chinese_gb16x12.fnt")
     ap.add_argument("--eten-dir", default="font-src",
-                    help="放 STDFONT.15 / SPCFONT.15 / SPCFSUPP.15 的目錄")
+                    help="放 STDFONT.15 / SPCFONT.15 / SPCFSUPP.15（或 .24）的目錄")
+    ap.add_argument("--size", type=int, choices=(16, 24), default=16,
+                    help="16 = 倚天 15 點 16x15；24 = 倚天 24 點 24x24"
+                         "（STD.24M 要先用 etunpack.py 解成 STDFONT.24）")
     ap.add_argument("--embolden", action="store_true",
                     help="程式加粗（15 點只有偏細的明體；每列與左移一格 OR）")
     ap.add_argument("--fallback-ttf",
@@ -76,9 +85,16 @@ def main():
     ap.add_argument("--preview")
     args = ap.parse_args()
 
+    global DIM, ROWBYTES, GLYPH_BYTES
+    DIM = DIM24 if args.size == 24 else DIM15
+    ROWBYTES = (DIM[0] + 7) // 8
+    GLYPH_BYTES = ROWBYTES * DIM[1]
+
     table = json.load(open(args.table, encoding="utf-8"))
     d = args.eten_dir
-    eten = EtenFont(f"{d}/STDFONT.15", f"{d}/SPCFONT.15", f"{d}/SPCFSUPP.15")
+    ext = "24" if args.size == 24 else "15"
+    eten = EtenFont(f"{d}/STDFONT.{ext}", f"{d}/SPCFONT.{ext}",
+                    f"{d}/SPCFSUPP.{ext}", dim=DIM)
 
     blob = bytearray(GLYPH_BYTES * CAPACITY)
     fallback = []
@@ -99,7 +115,7 @@ def main():
 
     open(args.out, "wb").write(blob)
     print(f"字型 {args.out}：{len(table)} 字 / 容量 {CAPACITY}，{len(blob)} bytes"
-          f"（16x15，每字 {GLYPH_BYTES} bytes）")
+          f"（{DIM[0]}x{DIM[1]}，每字 {GLYPH_BYTES} bytes）")
     if fallback:
         # fallback 數量是品質指標：一大批掉進 fallback 就先懷疑索引公式或漏帶 SPCFONT
         print(f"Big5 缺字 {len(fallback)} 字（{len(fallback)*100/len(table):.2f}%），"
@@ -110,16 +126,16 @@ def main():
         chars = sorted(table)
         cols = 24
         rows_n = (len(chars) + cols - 1) // cols
-        img = Image.new("1", (cols * DIM15[0], rows_n * DIM15[1]))
+        img = Image.new("1", (cols * DIM[0], rows_n * DIM[1]))
         px = img.load()
         for i, ch in enumerate(chars):
             lead, trail = table[ch]
             off = font_index(lead, trail) * GLYPH_BYTES
-            gx, gy = (i % cols) * DIM15[0], (i // cols) * DIM15[1]
-            for y in range(DIM15[1]):
-                v = (blob[off + 2 * y] << 8) | blob[off + 2 * y + 1]
-                for x in range(DIM15[0]):
-                    if v & (1 << (15 - x)):
+            gx, gy = (i % cols) * DIM[0], (i // cols) * DIM[1]
+            for y in range(DIM[1]):
+                base = off + y * ROWBYTES
+                for x in range(DIM[0]):
+                    if blob[base + (x >> 3)] & (0x80 >> (x & 7)):
                         px[gx + x, gy + y] = 1
         img.resize((img.width * 2, img.height * 2), Image.NEAREST).save(args.preview)
         print(f"預覽 → {args.preview}")

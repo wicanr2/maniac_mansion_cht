@@ -1,5 +1,5 @@
 diff --git a/engines/scumm/charset.cpp b/engines/scumm/charset.cpp
-index 190e1818..8a9f9ac5 100644
+index 190e1818..457ea69a 100644
 --- a/engines/scumm/charset.cpp
 +++ b/engines/scumm/charset.cpp
 @@ -106,6 +106,9 @@ void ScummEngine::loadCJKFont() {
@@ -27,21 +27,22 @@ index 190e1818..8a9f9ac5 100644
  				_game.id == GID_INDY4 || _game.id == GID_MONKEY || _game.id == GID_MONKEY2 ||
  				_game.id == GID_TENTACLE) {
  				fontFile = "chinese_gb16x12.fnt";
-@@ -163,6 +172,21 @@ void ScummEngine::loadCJKFont() {
+@@ -163,6 +172,22 @@ void ScummEngine::loadCJKFont() {
  				_newLineCharacter = 0x21;
  				break;
  			case Common::ZH_CHN:
 +				if (_game.id == GID_MANIAC && _game.version == 2) {
-+					// 繁中化：倚天中文系統 (ETEN 3.53) 的 16x15 原生點陣字。
++					// 繁中化：倚天中文系統 (ETEN 3.53) 的原生點陣字，兩種尺寸都支援，
++					// **由字型檔的大小決定**（numChar 固定 2232）：
++					//   2232 x 30 bytes → 16x15（倚天 15 點，邏輯 8x7.5，與原版 ASCII 同大）
++					//   2232 x 72 bytes → 24x24（倚天 24 點，邏輯 12x12，比原版大一半）
 +					//
-+					// 字模 16x15，但**排版仍以邏輯像素計**：文字表面放大 2 倍，
-+					// 所以 16x15 的字模只佔 8x7.5 個邏輯像素，跟原版 8x8 的 ASCII
-+					// 幾乎一樣大 —— 指令列 3 列 x 8px、16px 的文字區兩行、行距，
-+					// 全都不必改。邏輯／字模的換算由 printChar() 既有的
-+					// `if (is2byte) { origWidth /= _textSurfaceMultiplier; ... }` 負責，
-+					// 與 FM-Towns 的 CJK 走法一致。
-+					_2byteWidth = 16;
-+					_2byteHeight = 15;
++					// 排版一律以**邏輯像素**計：文字表面放大 2 倍，所以字模寬高各除以 2
++					// 就是邏輯尺寸。換算由 printChar() 既有的
++					// `if (is2byte) { origWidth /= _textSurfaceMultiplier; ... }` 與
++					// getCharWidth() 的 `_2byteWidth / 2` 負責，與 FM-Towns 的 CJK 走法一致。
++					_2byteWidth = (fp.size() >= (int64)numChar * 72) ? 24 : 16;
++					_2byteHeight = (_2byteWidth == 24) ? 24 : 15;
 +					_newLineCharacter = 0x21;
 +					_textSurfaceMultiplier = 2;
 +					break;
@@ -49,7 +50,7 @@ index 190e1818..8a9f9ac5 100644
  				_2byteWidth = 12;
  				_2byteHeight = 12;
  				_newLineCharacter = 0x21;
-@@ -310,6 +334,16 @@ byte *ScummEngine::get2byteCharPtr(int idx) {
+@@ -310,6 +335,16 @@ byte *ScummEngine::get2byteCharPtr(int idx) {
  			return _2byteFontPtr + base;
  		}
  	case Common::ZH_CHN:
@@ -66,19 +67,19 @@ index 190e1818..8a9f9ac5 100644
  		idx = ((idx % 256) - 0xa1)* 94  + ((idx / 256) - 0xa1);
  		break;
  	default:
-@@ -451,6 +485,11 @@ int CharsetRendererCommon::getFontHeight() const {
+@@ -451,6 +486,11 @@ int CharsetRendererCommon::getFontHeight() const {
  	} else if (_vm->_isIndy4Jap) {
  		return _vm->_force2ByteCharHeight ? 14 : _fontHeight;
  	} else if (_vm->_useCJKMode && !isSegaCD) {
-+		// 繁中化（Maniac Mansion V2 hi-res）：這裡回的是**邏輯**行高。字模雖是 16x15，
-+		// 但畫在 2 倍的文字表面上，邏輯上只佔 8 列，所以行距維持原版 8px
-+		// （比照 CharsetRendererTownsV3::getFontHeight() 在 CJK 下回 8 的做法）。
++		// 繁中化（Maniac Mansion V2 hi-res）：這裡回的是**邏輯**行高。字模畫在 2 倍的
++		// 文字表面上，所以邏輯高 = 字模高 / 2：16x15 → 7（不足原版 8，取 8）、
++		// 24x24 → 12。（比照 CharsetRendererTownsV3::getFontHeight() 在 CJK 下的做法。）
 +		if (_vm->_game.id == GID_MANIAC && _vm->_game.version == 2)
-+			return _fontHeight;
++			return MAX(_vm->_2byteHeight / _vm->_textSurfaceMultiplier, _fontHeight);
  		return MAX(_vm->_2byteHeight + 1, _fontHeight);
  	} else {
  		return _fontHeight;
-@@ -865,10 +904,19 @@ void CharsetRendererPC::drawBits1Kor(Graphics::Surface &dest, int x1, int y1, co
+@@ -865,10 +905,19 @@ void CharsetRendererPC::drawBits1Kor(Graphics::Surface &dest, int x1, int y1, co
  }
  
  int CharsetRendererV3::getDrawWidthIntern(uint16 chr) {
@@ -99,7 +100,7 @@ index 190e1818..8a9f9ac5 100644
  	return 8;
  }
  
-@@ -981,7 +1029,19 @@ void CharsetRendererV3::printChar(int chr, bool ignoreCharsetMask) {
+@@ -981,7 +1030,19 @@ void CharsetRendererV3::printChar(int chr, bool ignoreCharsetMask) {
  		_textScreenID = vs->number;
  	}
  
