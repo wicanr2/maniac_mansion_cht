@@ -43,11 +43,9 @@ done
 curl -fsSL -o "$WORK/libmad.tar.gz" \
   "https://downloads.sourceforge.net/mad/libmad-0.15.1b.tar.gz"
 # libmad 附的 config.sub/config.guess 是 2004 年的，認不得 aarch64-apple-darwin，
-# 會噴 "config.sub -apple-darwin23.6.0 failed"。換成新版即可。
-curl -fsSL -o "$WORK/config.sub" \
-  "https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.sub;hb=HEAD"
-curl -fsSL -o "$WORK/config.guess" \
-  "https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD"
+# 會噴 "config.sub -apple-darwin23.6.0 failed"。直接借 ScummVM 樹裡的新版
+# （比去 savannah 抓穩：那邊的 gitweb 網址會 404）。
+cp "$SVM/config.sub" "$SVM/config.guess" "$WORK/"
 for arch in arm64 x86_64; do
   rm -rf "$WORK/mad-src-$arch"; mkdir -p "$WORK/mad-src-$arch"
   tar xf "$WORK/libmad.tar.gz" -C "$WORK/mad-src-$arch" --strip-components=1
