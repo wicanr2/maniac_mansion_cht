@@ -69,8 +69,19 @@ done
 # USE_FREETYPE2；帶 --disable-freetype2 的話 Deluxe 一啟動就
 # "Game needs FreeType library, which was not included in this build!"。
 # ScummVM 靠 freetype-config 偵測，所以要 --enable-freetype-config。
-curl -fsSL -o "$WORK/freetype.tar.xz" \
-  "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz"
+# savannah 偶爾回 502，所以備幾個鏡像輪流試
+for url in \
+  "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz" \
+  "https://downloads.sourceforge.net/project/freetype/freetype2/2.13.2/freetype-2.13.2.tar.xz" \
+  "https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-2.tar.gz"
+do
+  if curl -fsSL --retry 3 --retry-delay 5 -o "$WORK/freetype.tar.xz" "$url"; then
+    echo "FreeType 取自 $url"
+    break
+  fi
+  echo "取不到，換下一個：$url"
+done
+test -s "$WORK/freetype.tar.xz"
 for arch in arm64 x86_64; do
   rm -rf "$WORK/ft-src-$arch"; mkdir -p "$WORK/ft-src-$arch"
   tar xf "$WORK/freetype.tar.xz" -C "$WORK/ft-src-$arch" --strip-components=1
