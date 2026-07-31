@@ -1,0 +1,102 @@
+#!/bin/bash
+# 在 GitHub Actions macos-14 runner 上編瘋狂大樓中文版的 ScummVM universal binary（arm64 + x86_64）。
+#
+# 為什麼是 CI 而不是本機：macOS 的 .app 需要 codesign / iconutil，只有 macOS host 有；
+# Linux 端做不出來也測不出來（尤其 SDL 與 Gatekeeper 的雷）。
+#
+# 幾條踩過的規則（沿用 mac-app-cross-pack 的實戰結論）：
+#   * 不要 brew install sdl2 —— 2026 年起那是 sdl2-compat shim，runtime 才 dlopen libSDL3，
+#     打包抓不到 → 玩家端「Failed loading SDL3 library」。改自源碼編 pinned 真 SDL2 靜態庫。
+#   * universal 不能單次雙 -arch（autoconf 版本解析會炸）→ 每弧各編一次再 lipo 合併。
+#   * ScummVM 的 configure 不是 autoconf：CXXFLAGS/LDFLAGS 只能用環境變數前綴。
+#   * 引擎要同時開 SCUMM 與 AGS（v2 中文版與 Deluxe 中文版共用一支 binary）。
+#     AGS 的 TTF 走它自己 bundle 的 FreeType 2.1.3，所以 --disable-freetype2 沒問題。
+set -euxo pipefail
+MIN=13.4
+SDLVER=2.30.9
+ROOT="$PWD"
+SVM="$ROOT/scummvm"
+WORK="$ROOT/_macbuild"; mkdir -p "$WORK"
+
+# ---- 1. SDL2 per-arch，自源碼靜態編 ----
+curl -fsSL -o "$WORK/SDL2.tar.gz" \
+  "https://github.com/libsdl-org/SDL/releases/download/release-${SDLVER}/SDL2-${SDLVER}.tar.gz"
+for arch in arm64 x86_64; do
+  rm -rf "$WORK/sdl-src-$arch"; mkdir -p "$WORK/sdl-src-$arch"
+  tar xf "$WORK/SDL2.tar.gz" -C "$WORK/sdl-src-$arch" --strip-components=1
+  P="$WORK/sdl-$arch"
+  runner=""; [ "$arch" = x86_64 ] && runner="arch -x86_64"
+  ( cd "$WORK/sdl-src-$arch"
+    $runner env CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+                LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+      ./configure --prefix="$P" --disable-shared --enable-static \
+        --host="$( [ "$arch" = x86_64 ] && echo x86_64-apple-darwin || echo aarch64-apple-darwin )" \
+        >/dev/null
+    $runner make -j"$(sysctl -n hw.ncpu)" >/dev/null
+    make install >/dev/null )
+done
+
+# ---- 2. ScummVM per-arch（SCUMM + AGS）----
+for arch in arm64 x86_64; do
+  P="$WORK/sdl-$arch"
+  runner=""; [ "$arch" = x86_64 ] && runner="arch -x86_64"
+  ( cd "$SVM"
+    make distclean >/dev/null 2>&1 || true
+    find . -name '*.o' -delete 2>/dev/null || true
+    $runner env \
+      CXXFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+      CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+      LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+      ./configure --disable-all-engines --enable-engine=scumm --enable-engine=ags \
+        --enable-release --disable-debug \
+        --with-sdl-prefix="$P/bin" \
+        --disable-fluidsynth --disable-flac --disable-png --disable-freetype2 \
+        --disable-jpeg --disable-gif --disable-mpeg2 --disable-vpx --disable-tremor \
+        --disable-mikmod --disable-openmpt --disable-fribidi --disable-retrowave \
+        --disable-vorbis --disable-mad --disable-faad --disable-theoradec --disable-a52 \
+        --disable-libcurl --disable-sndio --disable-timidity --disable-sparkle \
+        --disable-eventrecorder
+    # 守門：兩個引擎都要在
+    grep -qiE "Disabling engine SCUMM" config.log && { echo "### SCUMM 被剔除"; exit 13; } || true
+    grep -qiE "Disabling engine AGS"   config.log && { echo "### AGS 被剔除";   exit 14; } || true
+    $runner make -j"$(sysctl -n hw.ncpu)"
+    cp scummvm "$WORK/scummvm-$arch" )
+done
+
+# ---- 3. lipo 合成 universal ----
+lipo -create "$WORK/scummvm-arm64" "$WORK/scummvm-x86_64" -output "$WORK/scummvm-universal"
+lipo -info "$WORK/scummvm-universal"
+lipo -info "$WORK/scummvm-universal" | grep -q arm64 && \
+lipo -info "$WORK/scummvm-universal" | grep -q x86_64 || { echo "### 非雙弧"; exit 20; }
+
+# ---- 4. 組 .app 並 ad-hoc 簽章 ----
+APP="$ROOT/dist/ScummVM.app"; rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$WORK/scummvm-universal" "$APP/Contents/MacOS/scummvm"
+cp "$SVM"/gui/themes/*.zip "$APP/Contents/Resources/" 2>/dev/null || true
+cp "$SVM"/dists/engine-data/*.dat "$APP/Contents/Resources/" 2>/dev/null || true
+
+# 注意：這裡**不放**任何中文資料。烘出來的倚天字型是商業字型的衍生物、
+# Deluxe 的 .tra 夾帶英文原文，兩者都不進公開 repo，所以 CI 產出的是
+# engine-only 的 .app，中文資料在本機組包時才注入（與遊戲資料同一個道理）。
+
+cat > "$APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>scummvm</string>
+<key>CFBundleIdentifier</key><string>org.scummvm.maniaccht</string>
+<key>CFBundleName</key><string>ScummVM 瘋狂大樓中文版</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>maniac-cht</string>
+<key>LSMinimumSystemVersion</key><string>$MIN</string>
+</dict></plist>
+PLIST
+codesign --force --deep --sign - "$APP"
+lipo -info "$APP/Contents/MacOS/scummvm"
+
+# ---- 5. 打包（tar.gz 保 perm；APFS dmg 在 Windows/WSL 讀不到，Linux 端也做不出來）----
+mkdir -p "$ROOT/dist"
+OUTNAME="${OUTNAME:-maniac-cht-macos-app.tar.gz}"
+tar czf "$ROOT/dist/$OUTNAME" -C "$ROOT/dist" ScummVM.app
+echo "=== BUILD_OK:dist/$OUTNAME ==="
+ls -la "$ROOT/dist"
