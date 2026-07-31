@@ -1,6 +1,8 @@
 # 瘋狂大樓 繁體中文化（Maniac Mansion，SCUMM v2 + Deluxe 重製版）
 
-![遊戲畫面](screenshots/ingame-zh.png)
+[![實機畫面](screenshots/promo.gif)](https://youtu.be/ryuETTyvgh4)
+
+▶ **[宣傳影片（YouTube，56 秒）](https://youtu.be/ryuETTyvgh4)** —— 兩款遊戲的實機片段，配樂取自遊戲本身。
 
 二十年前的一個漆黑夜晚，一顆隕石墜落在山丘上的那棟大樓旁。從此那一帶怪事連連。
 
@@ -14,7 +16,7 @@
 
 原版部分把 Enhanced DOS 版（SCUMM v2）完整繁體中文化：**1139 行文字、15 個指令、物件名、選角資料、片頭與結局全部中文**，字型用**倚天中文系統的 24×24 原生點陣字**，畫面拉到 640×480 讓它放得進去，透過 ScummVM 執行。
 
-![指令列](screenshots/verbbar-zh.png)
+![遊戲畫面](screenshots/ingame-zh.png)
 
 15 個指令維持原版「5 欄 × 3 列」的排版，只是列距從 8 個邏輯像素放寬到 14——24×24 的倚天字等於 12 個邏輯像素高，照原本的 8 會上下咬在一起。最上面那條洋紅色的是句子列，會把指令與物件名組成一句話（上圖是還沒指到東西時的「走到」）。
 

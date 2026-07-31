@@ -1,12 +1,15 @@
 # 推廣影片
 
-56 秒、1280×720，全程在 docker 裡做（`tools/promo-record.sh` 擷取、`tools/make_promo.sh` 合成），
-不開剪輯軟體、可重跑。成品只留本機 `dist-all/`：
+**YouTube：<https://youtu.be/ryuETTyvgh4>**
 
-| 檔案 | 用途 |
-|---|---|
-| `maniac-mansion-cht-promo.mp4` | 完整推廣片（含配樂） |
-| `maniac-cht.gif` | README 用的靜音 GIF（8 秒、480 寬） |
+56 秒、1280×720，全程在 docker 裡做（`tools/promo-record.sh` 擷取、`tools/make_promo.sh` 合成），
+不開剪輯軟體、可重跑。
+
+| 檔案 | 位置 | 用途 |
+|---|---|---|
+| `maniac-mansion-cht-promo.mp4` | 本機 `dist-all/`（含配樂，不入庫） | 完整推廣片 |
+| `screenshots/promo.gif` | repo | README 頁首的無聲 GIF（10 秒、560 寬、67 KB），點下去連 YouTube |
+| `maniac-cht.gif` | 本機 `dist-all/` | 第一版 GIF（480 寬） |
 
 ## 素材都是實機的
 
@@ -50,11 +53,13 @@ PC speaker 模式——**MT-32 這個選項對 v1/v2 不存在**。實測 `--mus
 所以配樂取自最後這一段（`ffmpeg -ss 213 -t 34`），加淡入淡出後循環。
 判斷方式是頻譜與逐秒 RMS，不是憑耳朵猜（`rulebook/93` 鐵則 2）。
 
-## 公開之前要先決定的事
+## 散布的界線
 
 `rulebook/93` 的但書：用原版音樂管的是「品質真實」，跟「能不能公開散布」是兩回事。
 這支片的配樂是 **Maniac Mansion Deluxe 的遊戲音樂（Lucasfan Games）**，畫面是
 **Maniac Mansion 的美術（原權利人）**。
 
 * 本機保存 / 內部 demo：沒問題，產物 gitignore 不入庫。
-* **上 YouTube 或放進公開 repo：等於散布他人著作**，要先確認。目前只留在 `dist-all/`，沒有上傳。
+* **上 YouTube 等於散布他人著作**——這一步由專案作者自行決定並執行，
+  影片已發佈在 <https://youtu.be/ryuETTyvgh4>。repo 裡只放無聲的 GIF（`screenshots/promo.gif`），
+  完整影片檔仍只留在本機 `dist-all/`。
