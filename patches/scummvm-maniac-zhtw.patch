@@ -191,7 +191,7 @@ index bf85f13c..57ec7dd0 100644
  	}
  }
 diff --git a/engines/scumm/script_v2.cpp b/engines/scumm/script_v2.cpp
-index 241d938a..41d368f2 100644
+index 241d938a..58c55ad9 100644
 --- a/engines/scumm/script_v2.cpp
 +++ b/engines/scumm/script_v2.cpp
 @@ -373,6 +373,18 @@ void ScummEngine_v2::decodeParseString() {
@@ -217,22 +217,22 @@ index 241d938a..41d368f2 100644
  			vs->curRect.top = y;
  		}
  
-+		// 繁中化（24x24 字模）：指令區改成 14 個邏輯像素一列（見 init() 的畫布加高）。
-+		// 腳本給的是 8 格制的絕對座標（句子列 144、指令三列 152/160/168），
-+		// 這裡換算成同樣以 144 起算的 14 格制。
++		// 繁中化（24x24 字模）：指令區改成 14 個邏輯像素一列，起點也從 144 下移到 156
++		// （文字帶加高 12 的關係，見 init()）。腳本給的是 8 格制的絕對座標
++		// （句子列 144、指令三列 152/160/168），這裡換算成 156 起算的 14 格制。
 +		if (_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC && _game.version == 2 &&
 +			vs->curRect.top >= 144 && vs->curRect.top < 200) {
-+			vs->curRect.top = 144 + (vs->curRect.top - 144) * 7 / 4;
++			vs->curRect.top = 156 + (vs->curRect.top - 144) * 7 / 4;
 +		}
 +
  #ifdef USE_TTS
  		if (_game.id == GID_MANIAC && (_game.features & GF_DEMO)) {
  			ttsAction = Common::TextToSpeechManager::QUEUE;
 diff --git a/engines/scumm/scumm.cpp b/engines/scumm/scumm.cpp
-index cb0f5bc1..6a8a3f15 100644
+index cb0f5bc1..9e7e69e1 100644
 --- a/engines/scumm/scumm.cpp
 +++ b/engines/scumm/scumm.cpp
-@@ -1268,6 +1268,17 @@ Common::Error ScummEngine::init() {
+@@ -1268,6 +1268,22 @@ Common::Error ScummEngine::init() {
  	// Load it earlier so _useCJKMode variable could be set
  	loadCJKFont();
  
@@ -240,16 +240,32 @@ index cb0f5bc1..6a8a3f15 100644
 +	// （句子列 1 + 指令 3 + 物品欄 2），一列 14 個邏輯像素（字模 12 + 2 的行距）
 +	// 共 84，而原版的 144..200 只有 56。
 +	//
-+	// 解法是**把畫布加高**，不是把房間或上方的文字帶裁掉——那條 16 像素的文字帶
-+	// 是選角畫面的人物簡介與片頭字幕在用的。畫面總高從 200 改成 228
-+	// （文字帶 16 + 房間 128 + 指令區 84），版面其餘部分完全不動。
++	// 解法是**把畫布加高**，不是把房間或上方的文字帶裁掉。
++	//
++	// 上面那條文字帶也要跟著加高：它原本是 16 像素 = 剛好兩行 8 像素的字，
++	// 而 CJK 的行高變成 14，兩行要 28。不加高的話第二行會畫到帶子外面，
++	// 而 restoreCharsetBg() 只清帶子那麼高，於是上一則訊息的殘影留在下面，
++	// 新的字疊上去就糊成一團（片頭的製作名單第二行就是這樣壞的）。
++	//
++	// 畫面總高 200 → 240 = 文字帶 28 + 房間 128 + 指令區 84。
 +	// 這一步必須在下面的 initGraphics 之前做。
 +	if (_game.id == GID_MANIAC && _game.version == 2 && _useCJKMode && _2byteHeight == 24)
-+		_screenHeight = 228;
++		_screenHeight = 240;
 +
  #ifndef DISABLE_TOWNS_DUAL_LAYER_MODE
  	if (_game.platform == Common::kPlatformFMTowns && _forceFMTownsHiResMode)
  		_textSurfaceMultiplier = 2;
+@@ -2068,6 +2084,10 @@ void ScummEngine::resetScumm() {
+ 		initScreens(8, 144);
+ 	} else if ((_game.id == GID_MANIAC) && (_game.version <= 1) && !(_game.platform == Common::kPlatformNES)) {
+ 		initScreens(16, 152);
++	} else if (_game.id == GID_MANIAC && _game.version == 2 && _useCJKMode && _2byteHeight == 24) {
++		// 繁中化（24x24）：文字帶 0..28、房間 28..156（仍是完整的 128 列）、
++		// 指令區 156..240（6 列 x 14）。
++		initScreens(28, 156);
+ 	} else if (_game.version >= 7 || _game.heversion >= 71) {
+ 		initScreens(0, _screenHeight);
+ 	} else if ((_game.id == GID_ZAK) && (_game.platform == Common::kPlatformC64)) {
 diff --git a/engines/scumm/verbs.cpp b/engines/scumm/verbs.cpp
 index 1637dd33..32d0073d 100644
 --- a/engines/scumm/verbs.cpp
