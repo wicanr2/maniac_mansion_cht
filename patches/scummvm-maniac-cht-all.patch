@@ -41,7 +41,7 @@ index fca45307..b4f4ccf8 100644
  		GetAlfontFlags(f_params.LoadMode));
  	if (!alfptr)
 diff --git a/engines/scumm/charset.cpp b/engines/scumm/charset.cpp
-index 190e1818..457ea69a 100644
+index 190e1818..de8a2931 100644
 --- a/engines/scumm/charset.cpp
 +++ b/engines/scumm/charset.cpp
 @@ -106,6 +106,9 @@ void ScummEngine::loadCJKFont() {
@@ -109,19 +109,22 @@ index 190e1818..457ea69a 100644
  		idx = ((idx % 256) - 0xa1)* 94  + ((idx / 256) - 0xa1);
  		break;
  	default:
-@@ -451,6 +486,11 @@ int CharsetRendererCommon::getFontHeight() const {
+@@ -451,6 +486,14 @@ int CharsetRendererCommon::getFontHeight() const {
  	} else if (_vm->_isIndy4Jap) {
  		return _vm->_force2ByteCharHeight ? 14 : _fontHeight;
  	} else if (_vm->_useCJKMode && !isSegaCD) {
 +		// 繁中化（Maniac Mansion V2 hi-res）：這裡回的是**邏輯**行高。字模畫在 2 倍的
-+		// 文字表面上，所以邏輯高 = 字模高 / 2：16x15 → 7（不足原版 8，取 8）、
-+		// 24x24 → 12。（比照 CharsetRendererTownsV3::getFontHeight() 在 CJK 下的做法。）
-+		if (_vm->_game.id == GID_MANIAC && _vm->_game.version == 2)
-+			return MAX(_vm->_2byteHeight / _vm->_textSurfaceMultiplier, _fontHeight);
++		// 文字表面上，所以邏輯高 = 字模高 / 2：16x15 → 7（不足原版 8，取 8）；
++		// 24x24 → 12，但方塊字上下貼在一起太擠，補 2 個邏輯像素的行距成 14。
++		// （比照 CharsetRendererTownsV3::getFontHeight() 在 CJK 下的做法。）
++		if (_vm->_game.id == GID_MANIAC && _vm->_game.version == 2) {
++			int h = _vm->_2byteHeight / _vm->_textSurfaceMultiplier;
++			return MAX(h >= 12 ? h + 2 : h, _fontHeight);
++		}
  		return MAX(_vm->_2byteHeight + 1, _fontHeight);
  	} else {
  		return _fontHeight;
-@@ -865,10 +905,19 @@ void CharsetRendererPC::drawBits1Kor(Graphics::Surface &dest, int x1, int y1, co
+@@ -865,10 +908,19 @@ void CharsetRendererPC::drawBits1Kor(Graphics::Surface &dest, int x1, int y1, co
  }
  
  int CharsetRendererV3::getDrawWidthIntern(uint16 chr) {
@@ -142,7 +145,7 @@ index 190e1818..457ea69a 100644
  	return 8;
  }
  
-@@ -981,7 +1030,19 @@ void CharsetRendererV3::printChar(int chr, bool ignoreCharsetMask) {
+@@ -981,7 +1033,19 @@ void CharsetRendererV3::printChar(int chr, bool ignoreCharsetMask) {
  		_textScreenID = vs->number;
  	}
  
@@ -230,7 +233,7 @@ index bf85f13c..57ec7dd0 100644
  	}
  }
 diff --git a/engines/scumm/script_v2.cpp b/engines/scumm/script_v2.cpp
-index 241d938a..509ef832 100644
+index 241d938a..41d368f2 100644
 --- a/engines/scumm/script_v2.cpp
 +++ b/engines/scumm/script_v2.cpp
 @@ -373,6 +373,18 @@ void ScummEngine_v2::decodeParseString() {
@@ -252,11 +255,126 @@ index 241d938a..509ef832 100644
  		insertSpace = (c & 0x80) != 0;
  		c &= 0x7f;
  
+@@ -895,6 +907,14 @@ void ScummEngine_v2::o2_verbOps() {
+ 			vs->curRect.top = y;
+ 		}
+ 
++		// 繁中化（24x24 字模）：指令區改成 14 個邏輯像素一列（見 init() 的畫布加高）。
++		// 腳本給的是 8 格制的絕對座標（句子列 144、指令三列 152/160/168），
++		// 這裡換算成同樣以 144 起算的 14 格制。
++		if (_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC && _game.version == 2 &&
++			vs->curRect.top >= 144 && vs->curRect.top < 200) {
++			vs->curRect.top = 144 + (vs->curRect.top - 144) * 7 / 4;
++		}
++
+ #ifdef USE_TTS
+ 		if (_game.id == GID_MANIAC && (_game.features & GF_DEMO)) {
+ 			ttsAction = Common::TextToSpeechManager::QUEUE;
+diff --git a/engines/scumm/scumm.cpp b/engines/scumm/scumm.cpp
+index cb0f5bc1..6a8a3f15 100644
+--- a/engines/scumm/scumm.cpp
++++ b/engines/scumm/scumm.cpp
+@@ -1268,6 +1268,17 @@ Common::Error ScummEngine::init() {
+ 	// Load it earlier so _useCJKMode variable could be set
+ 	loadCJKFont();
+ 
++	// 繁中化（Maniac Mansion V2，24x24 字模）：指令區要放 6 列文字
++	// （句子列 1 + 指令 3 + 物品欄 2），一列 14 個邏輯像素（字模 12 + 2 的行距）
++	// 共 84，而原版的 144..200 只有 56。
++	//
++	// 解法是**把畫布加高**，不是把房間或上方的文字帶裁掉——那條 16 像素的文字帶
++	// 是選角畫面的人物簡介與片頭字幕在用的。畫面總高從 200 改成 228
++	// （文字帶 16 + 房間 128 + 指令區 84），版面其餘部分完全不動。
++	// 這一步必須在下面的 initGraphics 之前做。
++	if (_game.id == GID_MANIAC && _game.version == 2 && _useCJKMode && _2byteHeight == 24)
++		_screenHeight = 228;
++
+ #ifndef DISABLE_TOWNS_DUAL_LAYER_MODE
+ 	if (_game.platform == Common::kPlatformFMTowns && _forceFMTownsHiResMode)
+ 		_textSurfaceMultiplier = 2;
 diff --git a/engines/scumm/verbs.cpp b/engines/scumm/verbs.cpp
-index 1637dd33..b45919c2 100644
+index 1637dd33..32d0073d 100644
 --- a/engines/scumm/verbs.cpp
 +++ b/engines/scumm/verbs.cpp
-@@ -485,6 +485,23 @@ void ScummEngine_v2::redrawV2Inventory() {
+@@ -231,13 +231,21 @@ void ScummEngine_v2::initV2MouseOver() {
+ 	int pixelYOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
+ 	int pixelXOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
+ 
++	// 繁中化（24x24 字模）：指令區的一列從 8 個邏輯像素變成 14（字模 12 + 2 行距），
++	// 物品欄因此從相對 32 移到 56（句子列 14 + 指令三列 42）。
++	// 這些矩形同時是**點擊判定區**，所以改了之後滑鼠命中會自己跟著走。
++	const bool bigCJK = (_useCJKMode && _2byteHeight == 24 &&
++						 _game.id == GID_MANIAC && _game.version == 2);
++	const int rowH = bigCJK ? 14 : 8;
++	const int invTop = bigCJK ? 56 : 32;
++
+ 	// Inventory items
+ 
+ 	for (i = 0; i < 2; i++) {
+ 		_mouseOverBoxesV2[2 * i].rect.left = 0 + pixelXOffset;
+ 		_mouseOverBoxesV2[2 * i].rect.right = 144 + pixelXOffset;
+-		_mouseOverBoxesV2[2 * i].rect.top = 32 + 8 * i + pixelYOffset;
+-		_mouseOverBoxesV2[2 * i].rect.bottom = _mouseOverBoxesV2[2 * i].rect.top + 8;
++		_mouseOverBoxesV2[2 * i].rect.top = invTop + rowH * i + pixelYOffset;
++		_mouseOverBoxesV2[2 * i].rect.bottom = _mouseOverBoxesV2[2 * i].rect.top + rowH;
+ 
+ 		_mouseOverBoxesV2[2 * i].color = color;
+ 		_mouseOverBoxesV2[2 * i].hicolor = _hiLiteColorInvSentence;
+@@ -255,16 +263,16 @@ void ScummEngine_v2::initV2MouseOver() {
+ 
+ 	_mouseOverBoxesV2[kInventoryUpArrow].rect.left = 144 + pixelXOffset;
+ 	_mouseOverBoxesV2[kInventoryUpArrow].rect.right = 176 + pixelXOffset;
+-	_mouseOverBoxesV2[kInventoryUpArrow].rect.top = 32 + pixelYOffset;
+-	_mouseOverBoxesV2[kInventoryUpArrow].rect.bottom = 40 + pixelYOffset;
++	_mouseOverBoxesV2[kInventoryUpArrow].rect.top = invTop + pixelYOffset;
++	_mouseOverBoxesV2[kInventoryUpArrow].rect.bottom = invTop + rowH + pixelYOffset;
+ 
+ 	_mouseOverBoxesV2[kInventoryUpArrow].color = arrow_color;
+ 	_mouseOverBoxesV2[kInventoryUpArrow].hicolor = _hiLiteColorVerbArrow;
+ 
+ 	_mouseOverBoxesV2[kInventoryDownArrow].rect.left = 144 + pixelXOffset;
+ 	_mouseOverBoxesV2[kInventoryDownArrow].rect.right = 176 + pixelXOffset;
+-	_mouseOverBoxesV2[kInventoryDownArrow].rect.top = 40 + pixelYOffset;
+-	_mouseOverBoxesV2[kInventoryDownArrow].rect.bottom = 48 + pixelYOffset;
++	_mouseOverBoxesV2[kInventoryDownArrow].rect.top = invTop + rowH + pixelYOffset;
++	_mouseOverBoxesV2[kInventoryDownArrow].rect.bottom = invTop + 2 * rowH + pixelYOffset;
+ 
+ 	_mouseOverBoxesV2[kInventoryDownArrow].color = arrow_color;
+ 	_mouseOverBoxesV2[kInventoryDownArrow].hicolor = _hiLiteColorVerbArrow;
+@@ -274,7 +282,7 @@ void ScummEngine_v2::initV2MouseOver() {
+ 	_mouseOverBoxesV2[kSentenceLine].rect.left = 0 + pixelXOffset;
+ 	_mouseOverBoxesV2[kSentenceLine].rect.right = 320 + pixelXOffset;
+ 	_mouseOverBoxesV2[kSentenceLine].rect.top = 0 + pixelYOffset;
+-	_mouseOverBoxesV2[kSentenceLine].rect.bottom = 8 + pixelYOffset;
++	_mouseOverBoxesV2[kSentenceLine].rect.bottom = rowH + pixelYOffset;
+ 
+ 	_mouseOverBoxesV2[kSentenceLine].color = color;
+ 	_mouseOverBoxesV2[kSentenceLine].hicolor = _hiLiteColorInvSentence;
+@@ -401,7 +409,10 @@ void ScummEngine_v2::checkV2MouseOver(Common::Point pos) {
+ 
+ int ScummEngine_v2::checkV2Inventory(int x, int y) {
+ 	bool isNES = (_game.platform == Common::kPlatformNES);
+-	int inventoryArea = isNES ? 48 : 32;
++	// 繁中化（24x24）：物品欄的起點跟著 12 格制往下移（見 initV2MouseOver）
++	int inventoryArea = isNES ? 48
++						: ((_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC &&
++							_game.version == 2) ? 56 : 32);
+ 	int object = 0;
+ 
+ 	y -= _virtscr[kVerbVirtScreen].topline;
+@@ -438,7 +449,10 @@ void ScummEngine_v2::redrawV2Inventory() {
+ 	int maxVisibleInv, invCount, obj;
+ 	Common::Rect inventoryBox;
+ 	bool isNES = (_game.platform == Common::kPlatformNES);
+-	int inventoryArea = isNES ? 48 : 32;
++	// 繁中化（24x24）：物品欄的起點跟著 12 格制往下移（見 initV2MouseOver）
++	int inventoryArea = isNES ? 48
++						: ((_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC &&
++							_game.version == 2) ? 48 : 32);
+ 	int maxChars = isNES ? 13 : 18;
+ 	int pixelYOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
+ 	int pixelXOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
+@@ -485,6 +499,23 @@ void ScummEngine_v2::redrawV2Inventory() {
  		msg[maxChars] = 0;
  		strncpy((char *)msg, (const char *)tmp, maxChars);
  
