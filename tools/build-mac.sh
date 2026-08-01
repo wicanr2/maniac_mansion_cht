@@ -79,9 +79,12 @@ for arch in arm64 x86_64; do
     rm -rf "$WORK/$lib-src-$arch"; mkdir -p "$WORK/$lib-src-$arch"
     tar xf "$WORK/lib$lib.tar.gz" -C "$WORK/$lib-src-$arch" --strip-components=1
     extra=""; [ "$lib" = vorbis ] && extra="--with-ogg=$P"
+    # libvorbis 的 configure 是靠 pkg-config 找 libogg 的，只給 --with-ogg 會噴
+    # "must have Ogg installed!"，所以要把剛裝好的 ogg.pc 路徑帶進去。
     ( cd "$WORK/$lib-src-$arch"
       $runner env CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
                   LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+                  PKG_CONFIG_PATH="$P/lib/pkgconfig" \
         ./configure --prefix="$P" --enable-static --disable-shared --host="$host" $extra >/dev/null
       $runner make -j"$(sysctl -n hw.ncpu)" >/dev/null
       make install >/dev/null )

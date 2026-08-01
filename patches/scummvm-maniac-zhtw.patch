@@ -352,7 +352,7 @@ index ebb998ec..d7bedd1f 100644
  		sentenceline.right = _virtscr[kVerbVirtScreen].w - 1 + pixelXOffset;
  	}
 diff --git a/engines/scumm/verbs.cpp b/engines/scumm/verbs.cpp
-index 1637dd33..32d0073d 100644
+index 1637dd33..64f79f1f 100644
 --- a/engines/scumm/verbs.cpp
 +++ b/engines/scumm/verbs.cpp
 @@ -231,13 +231,21 @@ void ScummEngine_v2::initV2MouseOver() {
@@ -421,19 +421,24 @@ index 1637dd33..32d0073d 100644
  	int object = 0;
  
  	y -= _virtscr[kVerbVirtScreen].topline;
-@@ -438,7 +449,10 @@ void ScummEngine_v2::redrawV2Inventory() {
+@@ -438,7 +449,15 @@ void ScummEngine_v2::redrawV2Inventory() {
  	int maxVisibleInv, invCount, obj;
  	Common::Rect inventoryBox;
  	bool isNES = (_game.platform == Common::kPlatformNES);
 -	int inventoryArea = isNES ? 48 : 32;
-+	// 繁中化（24x24）：物品欄的起點跟著 12 格制往下移（見 initV2MouseOver）
++	// 繁中化（24x24）：物品欄的起點跟著 14 格制往下移，數值必須與 initV2MouseOver 的
++	// invTop 一致（句子列 14 + 指令三列 42 = 56）。這裡曾經寫成 48，比指令第三列的
++	// 底部（198+14=212，相對 56）高了 8 列，於是下面那個 restoreBackground() 會把
++	// 第三列指令的下半截一起清掉——原本看不出來，是因為清除只作用在虛擬螢幕緩衝區，
++	// 而中文是畫在文字表面上；等文字表面也一起清了（見 gfx.cpp restoreBackground），
++	// 「給／閱讀／查看／使用／修理」就少了一半。
 +	int inventoryArea = isNES ? 48
 +						: ((_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC &&
-+							_game.version == 2) ? 48 : 32);
++							_game.version == 2) ? 56 : 32);
  	int maxChars = isNES ? 13 : 18;
  	int pixelYOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
  	int pixelXOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
-@@ -485,6 +499,23 @@ void ScummEngine_v2::redrawV2Inventory() {
+@@ -485,6 +504,23 @@ void ScummEngine_v2::redrawV2Inventory() {
  		msg[maxChars] = 0;
  		strncpy((char *)msg, (const char *)tmp, maxChars);
  
