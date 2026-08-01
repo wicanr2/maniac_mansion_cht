@@ -82,6 +82,9 @@ for arch in arm64 x86_64; do
     # libvorbis 的 configure 是靠 pkg-config 找 libogg 的，只給 --with-ogg 會噴
     # "must have Ogg installed!"，所以要把剛裝好的 ogg.pc 路徑帶進去。
     ( cd "$WORK/$lib-src-$arch"
+      # libvorbis 的 configure 在 Darwin 上會塞 -force_cpusubtype_ALL，現代 ld 不認
+      # （只有 test_sharedbook 這支測試程式會用到，但 make 一樣會失敗）
+      sed -i '' 's/-force_cpusubtype_ALL//g' configure
       $runner env CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
                   LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
                   PKG_CONFIG_PATH="$P/lib/pkgconfig" \
