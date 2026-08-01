@@ -62,12 +62,34 @@ fi
 # [雷] exclude 要用 ./config.h 這種**錨定路徑**。寫成 config.h 會連
 #      audio/softsynth/mt32/config.h（Munt 的版本標頭）一起排除掉，
 #      編到 mt32emu 時就會噴 MT32EMU_VERSION_MAJOR 未宣告。
-if [ ! -d "$WORK" ]; then
-    mkdir -p "$WORK"
-    tar -C /w/tools/scummvm-src -cf - \
-        --exclude=.git --exclude='*.o' --exclude='*.a' --exclude=build-ags \
-        --exclude=./config.mk --exclude=./config.h --exclude=./config.log . | tar -C "$WORK" -xf -
-fi
+# [雷·2026-08-01] 這裡本來寫 `if [ ! -d "$WORK" ]`，只在第一次複製；之後每次重跑都是拿
+#      **7/30 的舊 source** 再 make 一次。結果 Windows 版少了 24x24 的所有修改（字型尺寸偵測、
+#      畫布 240、指令列重排），拿到 24x24 的字型檔卻用 16x15 的 metrics 去讀 → 每個字取 30 bytes
+#      當 16x15 畫，畫面上就是一團藍色雜訊。Linux/AppImage 直接編 scummvm-src 所以沒事。
+#      現在改成每次都同步(rsync 只搬有變動的檔案，.o 留著讓 make 增量編)。
+mkdir -p "$WORK"
+python3 - "$WORK" <<'PYSYNC'
+import os, shutil, sys
+src, dst = "/w/tools/scummvm-src", sys.argv[1]
+skipdir = {".git", "build-ags"}
+n = 0
+for root, dirs, files in os.walk(src):
+    dirs[:] = [d for d in dirs if d not in skipdir]
+    rel = os.path.relpath(root, src)
+    for f in files:
+        if f.endswith((".o", ".a", ".log")) or (rel == "." and f in ("config.mk", "config.h")):
+            continue
+        s = os.path.join(root, f)
+        d = os.path.join(dst, rel, f) if rel != "." else os.path.join(dst, f)
+        if os.path.exists(d) and os.path.getsize(s) == os.path.getsize(d) and \
+           abs(os.path.getmtime(s) - os.path.getmtime(d)) < 1:
+            continue
+        if os.path.exists(d) and open(s, "rb").read() == open(d, "rb").read():
+            continue
+        os.makedirs(os.path.dirname(d), exist_ok=True)
+        shutil.copy2(s, d); n += 1
+print("同步了 %d 個檔案到 %s" % (n, dst))
+PYSYNC
 rm -f "$WORK/config.mk" "$WORK/config.h" "$WORK/config.log"
 test -f "$WORK/config.guess" && test -f "$WORK/config.sub"
 

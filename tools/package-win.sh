@@ -24,7 +24,14 @@ pack() {   # $1 = full | patch
     cp game-cht/mansiond/chinese_gb16x12.fnt "$D/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$D/cht/"
     cp deluxe/fonts/agsfnt-zh.ttf "$D/cht/agsfnt-zh.ttf"
-    printf '[scummvm]\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=16\r\n' > "$D/cht/scummvm.ini"
+    printf '[scummvm]\r\naspect_ratio=false\r\nfiltering=false\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=16\r\n' > "$D/cht/scummvm.ini"
+
+    # [雷] scummvm.exe 旁邊放 scummvm.ini = ScummVM 的 portable 模式
+    #      （backends/platform/sdl/win32/win32.cpp: detectPortableConfigFile()）。
+    #      沒有這個檔的話，玩家直接雙擊 scummvm.exe 會吃到預設值，其中
+    #      **aspect_ratio 校正會把 240 列非整數拉成 288 列** —— 美術看起來還好，
+    #      但 24x24 中文字的一像素筆劃會被抹成一團綠色雜訊（實測 wine 重現）。
+    printf '[scummvm]\r\naspect_ratio=false\r\nfiltering=false\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=16\r\n' > "$D/scummvm.ini"
     # 中文字型要佔滿 0–14 號槽（640×400 模式下遊戲改用 13/14 號槽）
     printf '@echo off\r\nsetlocal\r\nif "%%~1"=="" (echo 用法： %%~nx0 ^<Maniac Mansion Deluxe 遊戲夾^> ^& pause ^& exit /b 1)\r\ncopy /y "%%~dp0Chinese.tra" "%%~1" >nul\r\ncopy /y "%%~dp0acsetup.cfg" "%%~1" >nul\r\nfor /l %%%%i in (0,1,14) do copy /y "%%~dp0agsfnt-zh.ttf" "%%~1\\agsfnt%%%%i.ttf" >nul\r\necho 裝好了。\r\npause\r\n' \
         > "$D/cht/安裝到-Deluxe.bat"
@@ -33,13 +40,17 @@ pack() {   # $1 = full | patch
         mkdir -p "$D/game" "$D/deluxe"
         cp game-cht/mansiond/*.LFL game-cht/mansiond/chinese_gb16x12.fnt "$D/game/"
         cp -r deluxe/game-cht/. "$D/deluxe/"
-        printf '@echo off\r\nstart "" "%%~dp0scummvm.exe" -p "%%~dp0game" --auto-detect --extrapath="%%~dp0game" -e adlib --no-aspect-ratio\r\n' \
+        printf '@echo off\r\nstart "" "%%~dp0scummvm.exe" -p "%%~dp0game" --auto-detect --extrapath="%%~dp0game" -e adlib --no-aspect-ratio --no-filtering\r\n' \
             > "$D/玩瘋狂大樓（中文版）.bat"
-        printf '@echo off\r\nstart "" "%%~dp0scummvm.exe" -p "%%~dp0deluxe" --auto-detect --config="%%~dp0cht\\scummvm.ini" --no-aspect-ratio\r\n' \
+        printf '@echo off\r\nstart "" "%%~dp0scummvm.exe" -p "%%~dp0deluxe" --auto-detect --no-aspect-ratio --no-filtering\r\n' \
             > "$D/玩 Deluxe 重製版（中文版）.bat"
+        # 萬一解壓縮把中文檔名弄壞，還有一組純 ASCII 的可以點
+        cp "$D/玩瘋狂大樓（中文版）.bat"        "$D/play-maniac.bat"
+        cp "$D/玩 Deluxe 重製版（中文版）.bat"  "$D/play-deluxe.bat"
     else
-        printf '@echo off\r\nrem 自備遊戲夾：把 cht\\chinese_gb16x12.fnt 複製進去，再把下面的路徑改成你的遊戲夾\r\nstart "" "%%~dp0scummvm.exe" --extrapath="%%~dp0cht" -e adlib --no-aspect-ratio\r\n' \
+        printf '@echo off\r\nrem 自備遊戲夾：把 cht\\chinese_gb16x12.fnt 複製進去，再把下面的路徑改成你的遊戲夾\r\nstart "" "%%~dp0scummvm.exe" --extrapath="%%~dp0cht" -e adlib --no-aspect-ratio --no-filtering\r\n' \
             > "$D/啟動（自備遊戲）.bat"
+        cp "$D/啟動（自備遊戲）.bat" "$D/play.bat"
     fi
 
     cat > "$D/README.txt" <<TXT
@@ -49,15 +60,36 @@ scummvm.exe 是自編的 ScummVM，同時含 SCUMM 與 AGS 兩個引擎，並含
   engines/scumm —— v2 的 CJK 路徑、16x15 倚天字型、640x400 hi-res 文字表面
   engines/ags   —— 可用 ags_ttf_font_size 覆寫 TTF 名目尺寸（Deluxe 用 24）
 
+scummvm.ini 放在 scummvm.exe 旁邊，ScummVM 會以 portable 模式讀它。
+裡面關掉了 aspect ratio 校正——開著的話畫面高度會被非整數拉伸，
+24x24 的中文字會被抹成雜訊。**請不要刪掉這個檔。**
+
 cht\\ 是中文資料：SCUMM v2 的字型、Deluxe 的譯文與字型。
 自備 Deluxe 遊戲的話，把 cht\\安裝到-Deluxe.bat 拖到遊戲夾上（或帶遊戲夾路徑執行）即可。
 TXT
 
-    ( cd /tmp && zip -qr "/w/$OUT/maniac-mansion-cht-$KIND-windows-x64.zip" "mmwin-$KIND" -x '*.DS_Store' )
-    # zip 內第一層改成有意義的名字
-    ( cd /tmp && rm -rf "maniac-mansion-cht-$KIND" && mv "mmwin-$KIND" "maniac-mansion-cht-$KIND" \
-      && rm -f "/w/$OUT/maniac-mansion-cht-$KIND-windows-x64.zip" \
-      && zip -qr "/w/$OUT/maniac-mansion-cht-$KIND-windows-x64.zip" "maniac-mansion-cht-$KIND" )
+    # [雷] Info-ZIP 的 zip 不會設 UTF-8 旗標（general purpose bit 11），
+    #      中文檔名到了 Windows 檔案總管會用系統 ANSI（台灣是 CP950）解碼 → 檔名變亂碼，
+    #      玩家找不到 .bat 就會直接雙擊 scummvm.exe，於是吃到預設的 aspect ratio 校正。
+    #      Python 的 zipfile 對非 ASCII 檔名會自動設這個旗標，所以改用它打包。
+    ( cd /tmp && rm -rf "maniac-mansion-cht-$KIND" && mv "mmwin-$KIND" "maniac-mansion-cht-$KIND" )
+    rm -f "/w/$OUT/maniac-mansion-cht-$KIND-windows-x64.zip"
+    python3 - "$KIND" "/w/$OUT/maniac-mansion-cht-$KIND-windows-x64.zip" <<'PY'
+import os, sys, zipfile
+kind, out = sys.argv[1], sys.argv[2]
+root = "/tmp/maniac-mansion-cht-%s" % kind
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+    for dirpath, _, files in os.walk(root):
+        for f in sorted(files):
+            if f == ".DS_Store":
+                continue
+            full = os.path.join(dirpath, f)
+            z.write(full, os.path.relpath(full, "/tmp"))
+bad = [i.filename for i in zipfile.ZipFile(out).infolist()
+       if any(ord(c) > 127 for c in i.filename) and not (i.flag_bits & 0x800)]
+assert not bad, "這些檔名沒帶 UTF-8 旗標: %s" % bad
+print("zip 內非 ASCII 檔名都帶了 UTF-8 旗標")
+PY
 }
 
 pack full

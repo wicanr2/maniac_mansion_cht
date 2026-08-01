@@ -15,11 +15,11 @@
 
 | 檔案 | 給誰 |
 |---|---|
-| `chinese_gb16x12.fnt` | SCUMM v2（倚天 16×15 點陣字） |
+| `chinese_gb16x12.fnt` | SCUMM v2（倚天 24×24 點陣字；換成 16×15 那份，引擎會自己依檔案大小切回去） |
 | `Chinese.tra`、`acsetup.cfg` | Deluxe（譯文＋選語言＋`upscale=1`） |
 | `agsfnt-zh.ttf` | Deluxe 的中文字型（一份） |
 | `安裝到-Deluxe.sh` / `.bat` | 把上面三個裝進遊戲夾 |
-| `scummvm.ini` | 只有一行 `ags_ttf_font_size=24` |
+| `scummvm.ini` | 關長寬比修正與濾鏡、Deluxe 的字級（Windows 版另有一份放在 `scummvm.exe` 旁，見下） |
 
 字型只放**一份**、由安裝腳本複製成 `agsfnt0.ttf` … `agsfnt14.ttf`。要鋪到 14 是因為 640×400
 模式下遊戲改用 13/14 號字型槽（見 `40-deluxe.md`）；直接塞 15 份進包裡會多 5 MB，
@@ -68,15 +68,59 @@ AppRun 吃一個可選參數：不給就跑 v2 中文版，給 `deluxe` 就跑 D
 
 ## Windows — mingw-w64 交叉編
 
-`tools/build-win.sh` + `tools/package-win.sh`。三個踩過的雷：
+`tools/build-win.sh` + `tools/package-win.sh`。踩過的雷：
 
 1. **複製 source 樹時 exclude 要用錨定路徑** `./config.h`。寫成 `config.h` 會連 `audio/softsynth/mt32/config.h`（Munt 的版本標頭）一起排除，編 mt32emu 時噴 `MT32EMU_VERSION_MAJOR` 未宣告。
 2. **不要把 `/usr/x86_64-w64-mingw32/bin` 放進 PATH**。那裡是 target binutils（`as`／`ld`），native g++ 會撿到 mingw 的 `as`，於是「native 編譯器產 ELF 組語 → COFF 組譯器讀它」，噴一整片 `junk at end of line`、`.type pseudo-op used outside of .def/.endef`。SDL 只要 `SDL_CONFIG` 指到 `sdl2-config` 就好。
 3. **複製過來的樹要清掉舊 `config.mk`**，否則 `if [ ! -f config.mk ]` 這種守門會讓 configure 整個被跳過，直接沿用 Linux 那次的設定（CXX 還是 `g++`）。
 
-執行期 DLL 要一起附：`SDL2.dll`、`libgcc_s_seh-1.dll`、`libstdc++-6.dll`、`libwinpthread-1.dll`。
+4. **source 樹要每次同步，不能只複製一次。** 原本寫 `if [ ! -d "$WORK" ]`，於是第一次之後每次
+   重跑都是拿舊 source 再 `make` 一遍。Linux／AppImage 是直接編 `scummvm-src` 所以永遠是最新的，
+   只有 Windows 版停在舊碼——**兩邊會無聲地分岔**。詳見下一節。
+5. **執行期 DLL 要一起附**：`SDL2.dll`、`libgcc_s_seh-1.dll`、`libstdc++-6.dll`、`libwinpthread-1.dll`。
 
 驗證用 wine 實跑，不是只看檔案有沒有產出——Deluxe 少了 AGS 的那個問題就是這樣抓到的。
+
+### Windows 版中文糊成雜訊：一個症狀、三個原因
+
+使用者回報 Windows 版「字都糊了」，查下來是三件事疊在一起，前兩件是包裝問題，第三件才是主因。
+
+**主因：exe 是舊的（引擎與資料版本不合）。** 畫面上七個中文字只佔約 112 px，而 24×24 的字
+應該佔 168 px（7 × 24）——112 = 7 × 16，等於引擎是用 **16×15 的 metrics** 去讀 **24×24 的字型檔**。
+每個字只取 30 bytes（16×15 的量）當成一個字畫出來，畫面自然是一團藍色雜訊。
+根因就是上面第 4 點：`build-win.sh` 沒有重新同步 source，Windows 版停在加 24×24 支援之前的版本。
+
+判讀方式值得記下來：**先量字的間距，再猜原因**。間距是 `_2byteWidth` 直接決定的，
+量出 16 就代表引擎那側認定字型是 16 寬，跟顯示層（scaler、aspect ratio、gfx backend）都無關——
+所以那時候試 `--gfx-mode=surfacesdl`／`opengl` 兩種後端都一樣壞，是合理的。
+
+**副因一：zip 沒有 UTF-8 檔名旗標。** Info-ZIP 的 `zip` 不會設 general purpose bit 11（0x800），
+於是中文檔名在繁中 Windows（CP950）上解出來是亂碼，`玩瘋狂大樓（中文版）.bat` 變成一串問號，
+使用者只好直接雙擊 `scummvm.exe`——那樣不帶任何啟動參數。改用 Python `zipfile`
+（非 ASCII 檔名會自動設旗標），並在打包腳本裡加斷言：
+
+```python
+for i in zf.infolist():
+    if any(ord(c) > 127 for c in i.filename):
+        assert i.flag_bits & 0x800, i.filename
+```
+
+同時補一組純 ASCII 的 `play-maniac.bat`／`play-deluxe.bat` 當後備。
+
+**副因二：直接跑 exe 會套用長寬比修正。** 預設的 aspect ratio correction 把 240 行拉成 288 行，
+非整數倍縮放讓點陣字糊掉（實測面板高度 308 px，正確應為 256 px）。
+解法是**在 `scummvm.exe` 旁邊放一份 `scummvm.ini`**——ScummVM 的
+`detectPortableConfigFile()` 會優先採用它（除非裝在 Program Files 底下）：
+
+```ini
+[scummvm]
+aspect_ratio=false
+filtering=false
+ags_ttf_font_size=24
+ags_ttf_font_size_12=16
+```
+
+這樣即使玩家不透過 `.bat`、直接雙擊 exe，設定也是對的。
 
 ## macOS — GitHub Actions
 
