@@ -35,6 +35,29 @@ if [ ! -f "$PREFIX/lib/libmad.a" ]; then
     cd /w
 fi
 
+# ---- 1b2. libogg + libvorbis（Deluxe 的音效是 OGG）----
+# [雷·2026-08-01] 原本帶 --disable-vorbis，結果 Deluxe 在 Windows／macOS 上「有音樂沒音效」：
+#   MMD 的 66 個音效（腳步、蟲鳴、開門…，多半 0.05-2.6 秒）都是 OGG Vorbis，
+#   音樂則是 MIDI。沒有 vorbis 時 ags/engine/media/audio/sound.cpp 的 my_load_ogg()
+#   直接 return nullptr——**不警告、不報錯**，音效就這樣靜靜消失。Linux 版沒帶這個旗標
+#   所以聽得到，兩邊因此分岔。
+if [ ! -f "$PREFIX/lib/libvorbisfile.a" ]; then
+    cd /tmp
+    curl -fsSL --retry 3 -o libogg.tar.gz "https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.gz"
+    rm -rf libogg-1.3.5 && tar xf libogg.tar.gz && cd libogg-1.3.5
+    ./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" --enable-static --disable-shared \
+        > /tmp/ogg-conf.log 2>&1 || { tail -20 /tmp/ogg-conf.log; exit 1; }
+    make -j"$(nproc)" > /tmp/ogg-make.log 2>&1 && make install > /dev/null
+    cd /tmp
+    curl -fsSL --retry 3 -o libvorbis.tar.gz "https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.gz"
+    rm -rf libvorbis-1.3.7 && tar xf libvorbis.tar.gz && cd libvorbis-1.3.7
+    ./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" --enable-static --disable-shared \
+        --with-ogg="$PREFIX" > /tmp/vorbis-conf.log 2>&1 || { tail -20 /tmp/vorbis-conf.log; exit 1; }
+    make -j"$(nproc)" > /tmp/vorbis-make.log 2>&1 || { tail -20 /tmp/vorbis-make.log; exit 1; }
+    make install > /dev/null
+    cd /w
+fi
+
 # ---- 1c. FreeType（AGS 的 TTF 一定要它）----
 # 一開始以為 AGS 自帶 lib/freetype-2.1.3 就夠，實跑才知道不是：帶了
 # --disable-freetype2 之後，Deluxe 一啟動就 "Game needs FreeType library,
@@ -42,8 +65,14 @@ fi
 # 這支腳本偵測的，所以 FreeType 要加 --enable-freetype-config 編。
 if [ ! -f "$PREFIX/bin/freetype-config" ]; then
     cd /tmp
-    curl -fsSL -o freetype.tar.xz \
-      "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz"
+    # savannah 會間歇回 502，備援鏡像（與 build-mac.sh 同一組）
+    for u in "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz" \
+             "https://downloads.sourceforge.net/freetype/freetype-2.13.2.tar.xz" \
+             "https://mirror.ossplanet.net/gnu/savannah/freetype/freetype-2.13.2.tar.xz" \
+             "https://github.com/freetype/freetype/releases/download/VER-2-13-2/freetype-2.13.2.tar.xz"; do
+        curl -fsSL --retry 3 --retry-delay 2 -o freetype.tar.xz "$u" && break
+    done
+    test -s freetype.tar.xz
     rm -rf freetype-2.13.2 && tar xf freetype.tar.xz
     cd freetype-2.13.2
     ./configure --host=x86_64-w64-mingw32 --prefix="$PREFIX" \
@@ -104,14 +133,17 @@ if [ ! -f config.mk ]; then
         --enable-release --disable-debug \
         --with-sdl-prefix="$PREFIX" \
         --with-freetype2-prefix="$PREFIX" \
+        --with-ogg-prefix="$PREFIX" --with-vorbis-prefix="$PREFIX" \
         --disable-fluidsynth --disable-flac --disable-png \
         --disable-jpeg --disable-gif --disable-mpeg2 --disable-vpx --disable-tremor \
         --disable-mikmod --disable-openmpt --disable-fribidi --disable-retrowave \
-        --disable-vorbis --disable-faad --disable-theoradec --disable-a52 \
+        --disable-faad --disable-theoradec --disable-a52 \
         --disable-libcurl --disable-sndio --disable-timidity --disable-eventrecorder \
         > configure.log 2>&1 || { tail -40 configure.log; exit 1; }
     grep -qiE "Disabling engine SCUMM" config.log && { echo "### SCUMM 被剔除"; exit 13; } || true
     grep -qiE "Disabling engine AGS"   config.log && { echo "### AGS 被剔除";   exit 14; } || true
+    # Deluxe 的音效是 OGG，少了 vorbis 會「有音樂沒音效」且不報錯，所以在這裡擋下來
+    grep -qE "^USE_VORBIS = 1" config.mk || { echo "### 沒編進 vorbis，Deluxe 會沒音效"; exit 15; }
 fi
 make -j"$(nproc)" > build.log 2>&1 || { tail -40 build.log; exit 1; }
 ls -l scummvm.exe

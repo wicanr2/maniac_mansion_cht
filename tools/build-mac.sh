@@ -64,6 +64,30 @@ for arch in arm64 x86_64; do
     make install >/dev/null )
 done
 
+# ---- 1b2. libogg + libvorbis per-arch（Deluxe 的音效是 OGG）----
+# [雷·2026-08-01] 原本帶 --disable-vorbis，Deluxe 在 macOS／Windows 上就「有音樂沒音效」：
+# MMD 的 66 個音效（腳步、蟲鳴、開關門，多半 0.05-2.6 秒）是 OGG Vorbis，音樂是 MIDI。
+# 少了 vorbis 時 ags/engine/media/audio/sound.cpp 的 my_load_ogg() 直接 return nullptr，
+# 不警告也不報錯，音效就靜靜消失（GitHub issue #2）。
+curl -fsSL --retry 3 -o "$WORK/libogg.tar.gz" "https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.gz"
+curl -fsSL --retry 3 -o "$WORK/libvorbis.tar.gz" "https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.gz"
+for arch in arm64 x86_64; do
+  P="$WORK/sdl-$arch"
+  runner=""; [ "$arch" = x86_64 ] && runner="arch -x86_64"
+  host="$( [ "$arch" = x86_64 ] && echo x86_64-apple-darwin || echo aarch64-apple-darwin )"
+  for lib in ogg vorbis; do
+    rm -rf "$WORK/$lib-src-$arch"; mkdir -p "$WORK/$lib-src-$arch"
+    tar xf "$WORK/lib$lib.tar.gz" -C "$WORK/$lib-src-$arch" --strip-components=1
+    extra=""; [ "$lib" = vorbis ] && extra="--with-ogg=$P"
+    ( cd "$WORK/$lib-src-$arch"
+      $runner env CFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+                  LDFLAGS="-arch $arch -mmacosx-version-min=$MIN" \
+        ./configure --prefix="$P" --enable-static --disable-shared --host="$host" $extra >/dev/null
+      $runner make -j"$(sysctl -n hw.ncpu)" >/dev/null
+      make install >/dev/null )
+  done
+done
+
 # ---- 1c. FreeType per-arch（AGS 的 TTF 一定要它）----
 # AGS 雖然 bundle 了 lib/freetype-2.1.3，但 ScummVM 的 AGS 引擎要的是
 # USE_FREETYPE2；帶 --disable-freetype2 的話 Deluxe 一啟動就
@@ -114,15 +138,18 @@ for arch in arm64 x86_64; do
         --with-sdl-prefix="$P/bin" \
         --with-mad-prefix="$P" \
         --with-freetype2-prefix="$P" \
+        --with-ogg-prefix="$P" --with-vorbis-prefix="$P" \
         --disable-fluidsynth --disable-flac --disable-png \
         --disable-jpeg --disable-gif --disable-mpeg2 --disable-vpx --disable-tremor \
         --disable-mikmod --disable-openmpt --disable-fribidi --disable-retrowave \
-        --disable-vorbis --disable-faad --disable-theoradec --disable-a52 \
+        --disable-faad --disable-theoradec --disable-a52 \
         --disable-libcurl --disable-sndio --disable-timidity --disable-sparkle \
         --disable-eventrecorder
     # 守門：兩個引擎都要在
     grep -qiE "Disabling engine SCUMM" config.log && { echo "### SCUMM 被剔除"; exit 13; } || true
     grep -qiE "Disabling engine AGS"   config.log && { echo "### AGS 被剔除";   exit 14; } || true
+    # Deluxe 的音效是 OGG，少了 vorbis 會「有音樂沒音效」且不報錯，所以在這裡擋下來
+    grep -qE "^USE_VORBIS = 1" config.mk || { echo "### 沒編進 vorbis，Deluxe 會沒音效"; exit 15; }
     $runner make -j"$(sysctl -n hw.ncpu)"
     cp scummvm "$WORK/scummvm-$arch" )
 done

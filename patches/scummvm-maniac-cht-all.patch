@@ -166,8 +166,33 @@ index 190e1818..de8a2931 100644
  #ifndef DISABLE_TOWNS_DUAL_LAYER_MODE
  		&& (_vm->_game.platform != Common::kPlatformFMTowns)
  #endif
+diff --git a/engines/scumm/dialogs.cpp b/engines/scumm/dialogs.cpp
+index 121e9835..2ffb69ac 100644
+--- a/engines/scumm/dialogs.cpp
++++ b/engines/scumm/dialogs.cpp
+@@ -782,6 +782,20 @@ const ResString &InfoDialog::getStaticResString(Common::Language lang, int strin
+ 	bool useHardcodedV3QuitPrompt = stringno == 5 && _vm->_game.version == 3 && _vm->_game.id != GID_LOOM;
+ 	bool useFixedDottMenuStrings = stringno >= 21 && stringno <= 26 && _vm->_game.id == GID_TENTACLE;
+ 
++	// 繁中化（Maniac Mansion V2）：v1/v2 的暫停／重新開始／離開這三則訊息，各語言版本
++	// 是各自寫死在直譯器裡的，官方沒有中文版。這裡補上，位元組是本專案自訂碼空間
++	// （首碼 0x88-0x9F、尾碼 0xA1-0xFD），要配 game 夾裡的 chinese_gb16x12.fnt 才畫得出來，
++	// 所以限定 maniac v2 + ZH_CHN 才生效。
++	// 結尾的 "(y/n)y" 保持 ASCII：引擎是拿字串最後一個字元當「確定」鍵。
++	static const ResString strMapZhManiacV2[] = {
++		{4, """\x8e\xbd\x8e\xbe\x92\xe7\x8d\xfd\x88\xac\x8a\xc7\x88\xe9\x88\xea\x8d\xb6\x92\xe8\x92\xe9\x88\xbf"""},                       // 遊戲暫停，按空白鍵繼續。
++		{5, """\x8c\xf7\x8c\xd3\x8a\xb9\x8d\xd3\x90\xfc\x89\xde\x8d\xfc\x89\xef\x89\xd2""(y/n)y"},   // 確定要重新開始嗎？(y/n)y
++		{6, """\x8c\xf7\x8c\xd3\x8a\xb9\x8a\xb5\x89\xde\x89\xef\x89\xd2""(y/n)y"}                    // 確定要離開嗎？(y/n)y
++	};
++	if (lang == Common::ZH_CHN && _vm->_game.id == GID_MANIAC && _vm->_game.version == 2 &&
++		stringno >= 3 && stringno <= 5)
++		return strMapZhManiacV2[stringno - 3];
++
+ 	// I have added the languages I found in scumm-md5.h for v1/2 games...
+ 	int langIndex = 0;
+ 	switch (lang) {
 diff --git a/engines/scumm/gfx.cpp b/engines/scumm/gfx.cpp
-index bf85f13c..57ec7dd0 100644
+index bf85f13c..e1d9e361 100644
 --- a/engines/scumm/gfx.cpp
 +++ b/engines/scumm/gfx.cpp
 @@ -704,6 +704,44 @@ void ScummEngine::drawStripToScreen(VirtScreen *vs, int x, int width, int top, i
@@ -215,7 +240,21 @@ index bf85f13c..57ec7dd0 100644
  		// Compose the text over the game graphics
  		if (_outputPixelFormat.bytesPerPixel == 2) {
  			const byte *srcPtr = (const byte *)src;
-@@ -1323,6 +1361,16 @@ void ScummEngine::restoreCharsetBg() {
+@@ -1265,7 +1303,12 @@ void ScummEngine::restoreBackground(Common::Rect rect, byte backColor) {
+ 		}
+ #endif
+ 
+-		if (_macScreen) {
++		// 繁中化（hi-res）：跟 restoreCharsetBg() 同一類問題。沒有雙緩衝的虛擬螢幕
++		// （指令列）原本靠下面那個 fill 把文字一起蓋掉，但 hi-res 模式的中文是畫在
++		// 文字表面上的，fill 不到 —— 句子列重畫時上一句就留在畫面上（issue #1：
++		// 暫停訊息疊在句子上）。這裡把對應的那一塊文字表面一起清掉。
++		if (_macScreen || (_textSurfaceMultiplier == 2 && _useCJKMode &&
++						   _game.id == GID_MANIAC && _game.version == 2)) {
+ 			byte *mask = (byte *)_textSurface.getBasePtr(rect.left * _textSurfaceMultiplier, (rect.top + vs->topline) * _textSurfaceMultiplier);
+ 			fill(mask, _textSurface.pitch, CHARSET_MASK_TRANSPARENCY, width * _textSurfaceMultiplier, height * _textSurfaceMultiplier, _textSurface.format.bytesPerPixel);
+ 		}
+@@ -1323,6 +1366,16 @@ void ScummEngine::restoreCharsetBg() {
  		if (vs->hasTwoBuffers || _macScreen) {
  			// Clean out the charset mask
  			clearTextSurface();
@@ -232,6 +271,19 @@ index bf85f13c..57ec7dd0 100644
  		}
  	}
  }
+diff --git a/engines/scumm/gfx_gui.cpp b/engines/scumm/gfx_gui.cpp
+index 133f6ec0..73ed255e 100644
+--- a/engines/scumm/gfx_gui.cpp
++++ b/engines/scumm/gfx_gui.cpp
+@@ -412,7 +412,7 @@ Common::KeyState ScummEngine::printMessageAndPause(const char *msg, int color, i
+ 			sentenceline.right = _virtscr[kVerbVirtScreen].w - 1;
+ 		} else {
+ 			sentenceline.top = _virtscr[kVerbVirtScreen].topline + pixelYOffset;
+-			sentenceline.bottom = _virtscr[kVerbVirtScreen].topline + 8 + pixelYOffset;
++			sentenceline.bottom = _virtscr[kVerbVirtScreen].topline + getSentenceLineHeight() + pixelYOffset;
+ 			sentenceline.left = 0 + pixelXOffset;
+ 			sentenceline.right = _virtscr[kVerbVirtScreen].w - 1 + pixelXOffset;
+ 		}
 diff --git a/engines/scumm/script_v2.cpp b/engines/scumm/script_v2.cpp
 index 241d938a..58c55ad9 100644
 --- a/engines/scumm/script_v2.cpp
@@ -308,6 +360,39 @@ index cb0f5bc1..9e7e69e1 100644
  	} else if (_game.version >= 7 || _game.heversion >= 71) {
  		initScreens(0, _screenHeight);
  	} else if ((_game.id == GID_ZAK) && (_game.platform == Common::kPlatformC64)) {
+diff --git a/engines/scumm/scumm.h b/engines/scumm/scumm.h
+index 9864f7e9..6903f49c 100644
+--- a/engines/scumm/scumm.h
++++ b/engines/scumm/scumm.h
+@@ -1778,6 +1778,15 @@ public:
+ 	bool isScummvmKorTarget();
+ 	bool hasLocalizer();
+ 
++	// 繁中化（Maniac Mansion V2，24x24）：句子列本來固定 8 條掃描線，中文字有 14 條。
++	// 重畫句子列前要清掉的是**上一句實際佔的高度**，用 8 的話下面 6 條會留著上一句的殘影
++	// （最明顯的是暫停訊息疊在句子上，見 issue #1）。
++	int getSentenceLineHeight() const {
++		if (_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC && _game.version == 2)
++			return _2byteHeight / _textSurfaceMultiplier + 2;
++		return 8;
++	}
++
+ //protected:
+ 	byte *_2byteFontPtr = nullptr;
+ 	byte *_2byteMultiFontPtr[20];
+diff --git a/engines/scumm/string.cpp b/engines/scumm/string.cpp
+index ebb998ec..d7bedd1f 100644
+--- a/engines/scumm/string.cpp
++++ b/engines/scumm/string.cpp
+@@ -1015,7 +1015,7 @@ void ScummEngine_v2::drawSentence() {
+ 		sentenceline.right = _virtscr[kVerbVirtScreen].w - 1;
+ 	} else {
+ 		sentenceline.top = _virtscr[kVerbVirtScreen].topline + pixelYOffset;
+-		sentenceline.bottom = _virtscr[kVerbVirtScreen].topline + 8 + pixelYOffset;
++		sentenceline.bottom = _virtscr[kVerbVirtScreen].topline + getSentenceLineHeight() + pixelYOffset;
+ 		sentenceline.left = 0 + pixelXOffset;
+ 		sentenceline.right = _virtscr[kVerbVirtScreen].w - 1 + pixelXOffset;
+ 	}
 diff --git a/engines/scumm/verbs.cpp b/engines/scumm/verbs.cpp
 index 1637dd33..32d0073d 100644
 --- a/engines/scumm/verbs.cpp

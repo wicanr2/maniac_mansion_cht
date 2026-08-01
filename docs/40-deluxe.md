@@ -214,6 +214,58 @@ upscale=1
 
 順帶踩到一個字型缺字：譯文原本用 U+2027（`‧`）當人名間隔號，**WQY 沒有這個字**（華康有），FreeType 會安靜地畫成空白。改用三種字型都有的 U+00B7（`·`）。`make_ags_font.py --fail-on-missing` 會在烘字時查 cmap 擋下這種問題——同一個機制先前也擋下過 U+22EF。
 
+### `a_button_*` 是控制資料，不是文字（GitHub issue #2）
+
+`.tra` 裡有九行長這樣：
+
+```
+a_button_give 0 1 2 Qq
+a_button_pick_up 1 7 8 Ww
+...
+```
+
+看起來像不用翻的內部字串，我們就原封照抄過去（值＝鍵）。實機的後果是**整個指令列失效**：
+第一顆按鈕變成一張橘色的「PICK」圖卡在那裡，點任何指令都沒反應，句子列永遠停在「走到」——
+玩家看得到鑰匙卻拿不起來，因為根本選不到「拿起」。
+
+對照遊戲自帶的德／法／西 `.tra` 就看得懂它的語法了：
+
+| 鍵 | 德文版的值 | 法文版的值 |
+|---|---|---|
+| `a_button_give 0 1 2 Qq` | `5 802 803 Dd` | `2 854 855 Ee` |
+| `a_button_look_at 4 9 10 Ss` | `0 788 789 Qq` | `1 848 849 Ww` |
+
+值的四個欄位是**「格子位置 一般圖號 反白圖號 熱鍵」**——鍵裡的那串數字就是英文版的預設值。
+德文把 give 移到第 5 格、改用 802/803 號的德文按鈕圖、熱鍵改 `Dd`（Drücken），
+所以每個語言都得自己填一份。照抄鍵的話，腳本讀到的第一個欄位是 `a_button_give` 這個字串而不是數字，
+解析出來的位置與圖號全是垃圾。
+
+我們沒有中文的按鈕圖（那是 CLIB 裡的手繪 sprite），所以值就填英文的預設：`0 1 2 Qq`、`1 7 8 Ww` …
+排版與熱鍵維持原樣，指令列恢復正常，句子列是中文。
+
+判讀方式值得記一下：把 `acsetup.cfg` 拆成「只有翻譯」「只有 upscale」兩個變因各跑一次，
+就看出是翻譯造成的、與 640×400 無關——**先切變因，再去看內容**。
+
+### 音效是 OGG，少了 vorbis 會安靜地全部消失（GitHub issue #2）
+
+使用者回報 macOS 版「有音樂、有語音，就是沒有腳步聲與夜晚蟲鳴」。原因不在資料也不在設定，
+在**建置旗標**：Windows 與 macOS 的 `configure` 帶了 `--disable-vorbis`，而 MMD 的音效是 OGG Vorbis。
+
+```
+Maniac.exe 裡的 66 個 OGG 流，長度多半 0.05–2.6 秒 = 音效
+另有 18 個 MThd（MIDI 音樂）、21 個 RIFF（WAV）
+```
+
+`ags/engine/media/audio/sound.cpp` 的 `my_load_ogg()` 在沒有 `USE_VORBIS` 時直接 `return nullptr`——
+**不警告、不報錯**，音效就這樣沒了，音樂（MIDI）照常，所以症狀是「只少了音效」。
+Linux 版沒帶那個旗標，所以聽得到，三個平台因此分岔。
+
+修法是 Windows／macOS 都自源碼編 libogg + libvorbis 並拿掉 `--disable-vorbis`，
+另外在兩支建置腳本加守門 `grep -qE "^USE_VORBIS = 1" config.mk`。
+
+驗證是同平台的 A/B：wine 裡用 `SDL_AUDIODRIVER=disk` 錄同一段操作，
+舊版（Release 上那支）進遊戲後 **RMS 全 0**，新版有 59% 的取樣點在發聲。
+
 ## 待辦
 
 1. 補 `gameencoding` hint，清掉 TRA keys 的警告。
