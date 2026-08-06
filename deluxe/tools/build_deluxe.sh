@@ -36,8 +36,11 @@ for i in $(seq 0 20); do cp deluxe/fonts/agsfnt-zh.ttf $G/agsfnt$i.ttf; done
 # kAssetPriorityDir，目錄會排在 CLIB 前面，所以遊戲夾裡這一份會蓋過 Maniac.exe 裡的那份，
 # 玩家原本的檔案完全不用動（實測：把 Give 換成橘色那張，畫面上就只有 Give 變橘）。
 python3 $T/ags_clib.py extract deluxe/game-orig-14/Maniac.exe acsprset.spr -o /tmp/acsprset.spr
+# 樣式參數是 make_deluxe_buttons.py 的預設值（定案的候選 A），這裡不重複寫死。
+# --export-pack 同時更新 patch 版要帶的那 24 KB 圖包，兩邊才不會走鐘。
 python3 $T/make_deluxe_buttons.py /tmp/acsprset.spr -o $G/acsprset.spr \
-    --preview deluxe/spr/preview-zh.png
+    --preview deluxe/spr/preview-zh.png \
+    --export-pack $T/cht_buttons.bin
 
 # upscale=1 讓 AGS 把這款 2.x 遊戲以 640×400 跑（engine/main/game_file.cpp:192），
 # 中文才有足夠的像素畫得清楚；純資料設定，不必動引擎。

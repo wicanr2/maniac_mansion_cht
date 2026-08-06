@@ -12,10 +12,20 @@
     字是 0x0211（藍）或 0xFC64（橘），字的右下 +1,+1 有一層 0x4008 的暗紫陰影。
     一般／反白兩張除了字的顏色以外像素完全相同。
 
-所以這裡就照著同一套規則畫中文：12×12 的 WQY Zen Hei Sharp **embedded bitmap**
-（跟 v2 原版那支 `build_cht_font.py` 同一個來源，12px 下 outline 描出來像雜訊），
-置中排進原尺寸的畫布，補上同樣的陰影。畫面上這些 sprite 會被引擎放大兩倍
-（640×400 legacy hi-res），所以 12×12 的字實際看到的是 24×24。
+所以這裡就照著同一套規則畫中文，置中排進原尺寸的畫布，補上同樣的陰影。畫面上這些
+sprite 會被引擎以最近鄰放大兩倍（640×400 legacy hi-res），所以每個畫下去的像素在螢幕上
+是 2×2 的方塊 —— 沒有抗鋸齒可用，只有黑白取捨。
+
+**選型**（掃過 6 種字型 × size 12–14 × 門檻 × 字距 × 跳動，約 60 組逐張比對後定案）：
+
+* **WQY Zen Hei 的 outline（face 0）14px、門檻 100**。字高跟英文一樣填滿按鈕；
+  outline 光柵化下直筆 2px、橫筆 1px，**粗細不勻**正好對上英文那種手繪不勻感——
+  點陣 strike 太工整反而做不出來。
+* **字距 10**：原版英文把整顆按鈕填到 97%，中文兩個字置中只有 74%，並排看差很多。
+* **`--jitter 1,0`**：第一個字掉 1px，做出英文那種基線上下跳。
+* 落選的：華康少女文字／王漢宗波浪／海報體在 12–14px 結構崩壞（門框被打斷、筆畫黏死），
+  華康超圓體的「關」內部糊成一塊，古印體只有 Big5 cmap（Unicode 查不到字）。
+  判準是拿「關」（19 畫）、「談」、「查」逐格檢查筆畫之間有沒有留下背景像素，不靠肉眼。
 
 用法：
     make_deluxe_buttons.py <來源 acsprset.spr> -o <輸出.spr> [--preview 圖.png]
@@ -55,63 +65,97 @@ VERBS = [
 ]
 
 
-def load_face(path="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", index=2):
+def load_face(path="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", index=2, size=GLYPH):
+    """有 embedded bitmap strike 就用它（點陣字設計師手繪的，小尺寸最清楚），
+    沒有就退回 outline，用 FreeType 的單色 rasterizer。"""
     face = freetype.Face(path, index)
     sizes = [s.height for s in face.available_sizes]
-    if GLYPH not in sizes:
-        raise SystemExit(f"face {index} 的 strike 高度是 {sizes}，找不到 {GLYPH}px")
-    face.select_size(sizes.index(GLYPH))
+    if size in sizes:
+        face.select_size(sizes.index(size))
+        face._is_strike = True
+    else:
+        face.set_pixel_sizes(0, size)
+        face._is_strike = False
     return face
 
 
-def glyph_bits(face, ch):
-    """回傳 12x12 的 bool 矩陣。"""
-    face.load_char(ch, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO)
+def glyph_bits(face, ch, box=GLYPH, thresh=128, bold=0):
+    """回傳 box×box 的 bool 矩陣。thresh 只對 outline 有效（灰階二值化門檻）。"""
+    if getattr(face, "_is_strike", False):
+        face.load_char(ch, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO)
+        mono = True
+    else:
+        face.load_char(ch, freetype.FT_LOAD_RENDER)
+        mono = False
     bm = face.glyph.bitmap
     rows, width, pitch = bm.rows, bm.width, bm.pitch
     top, left = face.glyph.bitmap_top, face.glyph.bitmap_left
-    out = [[False] * GLYPH for _ in range(GLYPH)]
-    # 12px strike 的基線在第 10 列
-    y0 = 10 - top
+    out = [[False] * box for _ in range(box)]
+    # 讓字框在方格裡置中：漢字通常滿版，直接用 bitmap 的實際大小回推。
+    # [雷] 這裡本來對 embedded bitmap 走 `y0 = 10 - bitmap_top`（12px strike 的基線），
+    #      換成 13/14px 的 strike 時 bitmap_top 變 11/12 → y0 變負 → **靜靜切掉字的頂端**
+    #      （「打」變「孔」、「拿」掉了人字頭）。置中就沒有這個問題，兩條路徑統一用它。
+    y0 = (box - rows) // 2
+    x0 = (box - width) // 2
     for r in range(rows):
         y = y0 + r
-        if not (0 <= y < GLYPH):
+        if not (0 <= y < box):
             continue
         for c in range(width):
-            x = left + c
-            if not (0 <= x < GLYPH):
+            x = x0 + c
+            if not (0 <= x < box):
                 continue
-            if bm.buffer[r * pitch + (c >> 3)] & (0x80 >> (c & 7)):
+            on = (bm.buffer[r * pitch + (c >> 3)] & (0x80 >> (c & 7))) if mono \
+                else (bm.buffer[r * pitch + c] >= thresh)
+            if on:
                 out[y][x] = True
+    if bold:
+        thick = [row[:] for row in out]
+        for y in range(box):
+            for x in range(box):
+                if out[y][x]:
+                    for dx in range(1, bold + 1):
+                        if x + dx < box:
+                            thick[y][x + dx] = True
+        out = thick
     return out
 
 
-def render_button(face, text, w, h, fg):
-    """畫一張 w×h 的按鈕，回傳 RGB565 的 bytes。"""
+def render_button(face, text, w, h, fg, box=GLYPH, thresh=128, bold=0,
+                  jitter=(), shadow=True, track=0):
+    """畫一張 w×h 的按鈕，回傳 RGB565 的 bytes。
+
+    jitter：每個字的垂直位移（像素），用來做原版那種「字會上下跳」的手寫感。
+    """
     px = [[BG] * w for _ in range(h)]
     for y in range(h):
         px[y][0] = TRANSP
         px[y][w - 1] = TRANSP
 
-    bits = [glyph_bits(face, ch) for ch in text]
-    total = len(bits) * GLYPH
+    bits = [glyph_bits(face, ch, box, thresh, bold) for ch in text]
+    # track = 字距。原版英文是把整顆按鈕撐滿的（40 寬填到 97%），中文兩個字擠在中間
+    # 只占 74%、64 寬的更只有 44%，並排看差很多。加字距把密度拉回來。
+    step = box + track
+    total = len(bits) * box + (len(bits) - 1) * track
     x0 = (w - total) // 2
-    y0 = (h - GLYPH) // 2
+    y0 = (h - box) // 2
+    dy = list(jitter) + [0] * (len(bits) - len(jitter))
 
     def put(x, y, colour):
         if 1 <= x < w - 1 and 0 <= y < h:
             px[y][x] = colour
 
-    for i, g in enumerate(bits):           # 先畫陰影，字才蓋得過去
-        for gy in range(GLYPH):
-            for gx in range(GLYPH):
-                if g[gy][gx]:
-                    put(x0 + i * GLYPH + gx + 1, y0 + gy + 1, SHADOW)
+    if shadow:
+        for i, g in enumerate(bits):       # 先畫陰影，字才蓋得過去
+            for gy in range(box):
+                for gx in range(box):
+                    if g[gy][gx]:
+                        put(x0 + i * step + gx + 1, y0 + gy + dy[i] + 1, SHADOW)
     for i, g in enumerate(bits):
-        for gy in range(GLYPH):
-            for gx in range(GLYPH):
+        for gy in range(box):
+            for gx in range(box):
                 if g[gy][gx]:
-                    put(x0 + i * GLYPH + gx, y0 + gy, fg)
+                    put(x0 + i * step + gx, y0 + gy + dy[i], fg)
 
     buf = bytearray()
     for row in px:
@@ -124,8 +168,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src", help="來源 acsprset.spr（用 ags_clib.py 從 Maniac.exe 抽出來）")
     ap.add_argument("-o", "--out", required=True)
+    # 預設值 = 定案的樣式（見檔頭「選型」一節）：黑體 outline 14px、門檻 100、
+    # 字距 10、第一個字掉 1px。改這裡就會連帶改建置產出，所以別隨手動。
     ap.add_argument("--font", default="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc")
-    ap.add_argument("--face", type=int, default=2)
+    ap.add_argument("--face", type=int, default=0)
+    ap.add_argument("--size", type=int, default=14, help="字框大小（12 或 13、14）")
+    ap.add_argument("--thresh", type=int, default=100, help="outline 二值化門檻（越小越粗）")
+    ap.add_argument("--bold", type=int, default=0, help="往右加粗幾像素")
+    ap.add_argument("--jitter", default="1,0", help="每字垂直位移，例如 \"-1,1\"（手寫跳動感）")
+    ap.add_argument("--no-shadow", action="store_true")
+    ap.add_argument("--track", type=int, default=10, help="字距（像素），把詞撐開到接近英文的密度")
     ap.add_argument("--append", action="store_true",
                     help="把中文圖接在檔尾（不動原本的槽），槽號印出來給 .tra 用")
     ap.add_argument("--preview", help="另存一張對照圖")
@@ -134,7 +186,10 @@ def main():
     a = ap.parse_args()
 
     sf = SpriteFile(a.src)
-    face = load_face(a.font, a.face)
+    face = load_face(a.font, a.face, a.size)
+    jit = [int(v) for v in a.jitter.split(",") if v.strip()] if a.jitter else ()
+    kw = dict(box=a.size, thresh=a.thresh, bold=a.bold, jitter=jit,
+              shadow=not a.no_shadow, track=a.track)
 
     repl = {}
     mapping = []
@@ -146,8 +201,8 @@ def main():
             w, h = 40, 14
         else:
             _, _, w, h, _, _ = sf.sprites[n_slot]
-        repl[n_slot] = (2, w, h, render_button(face, text, w, h, FG_NORMAL))
-        repl[h_slot] = (2, w, h, render_button(face, text, w, h, FG_HILITE))
+        repl[n_slot] = (2, w, h, render_button(face, text, w, h, FG_NORMAL, **kw))
+        repl[h_slot] = (2, w, h, render_button(face, text, w, h, FG_HILITE, **kw))
         mapping.append((name, text, n_slot, h_slot, w, h))
 
     data = sf.replace(repl, topmost=next_slot - 1 if a.append else None)
