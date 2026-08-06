@@ -124,14 +124,26 @@ CHT="$NEW/ScummVM.app/Contents/Resources/cht"
 if [ -d "$OLDAPP/Contents/Resources/deluxe" ]; then
     sh "$CHT/安裝到-Deluxe.sh" "$OLDAPP/Contents/Resources/deluxe" >/dev/null
 fi
-# 4. 重簽：改過的 .app 舊簽章會失效
+# 4. 重簽：改過的 .app 舊簽章會失效。
+#    Apple Silicon 上「沒有有效簽章」= 完全跑不起來，所以這一步失敗一定要講出來，
+#    不能吞掉——不然玩家只會看到 app 點了沒反應。
 xattr -cr "$OLDAPP" 2>/dev/null
 rm -rf "$OLDAPP/Contents/_CodeSignature"
-codesign --force --deep --sign - "$OLDAPP" 2>/dev/null
+if codesign --force --deep --sign - "$OLDAPP"; then
+    SIGNED=yes
+else
+    SIGNED=no
+fi
 
 echo
 echo "更新完成：$OLD"
-echo "直接開那邊的 ScummVM.app 或「玩 Deluxe 重製版（中文版）.command」就是新版了。"
+if [ "$SIGNED" = yes ]; then
+    echo "直接開那邊的 ScummVM.app 或「玩 Deluxe 重製版（中文版）.command」就是新版了。"
+else
+    echo "但是重新簽章失敗了。請在終端機手動跑這一行再開："
+    echo "  codesign --force --deep --sign - \"$OLDAPP\""
+    echo "（Apple Silicon 上沒有簽章的 app 會直接跑不起來。）"
+fi
 read -r _
 SH
         chmod +x "$D/更新我的完整版.command"
