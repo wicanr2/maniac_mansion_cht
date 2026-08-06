@@ -40,6 +40,52 @@ index fca45307..b4f4ccf8 100644
  	ALFONT_FONT *alfptr = LoadTTF(filename, fontSize,
  		GetAlfontFlags(f_params.LoadMode));
  	if (!alfptr)
+diff --git a/engines/ags/shared/game/main_game_file.cpp b/engines/ags/shared/game/main_game_file.cpp
+index 5a34fb71..33f028e1 100644
+--- a/engines/ags/shared/game/main_game_file.cpp
++++ b/engines/ags/shared/game/main_game_file.cpp
+@@ -29,6 +29,7 @@
+ #include "ags/shared/core/asset.h"
+ #include "ags/shared/core/asset_manager.h"
+ #include "ags/shared/debugging/out.h"
++#include "common/config-manager.h"
+ #include "ags/shared/game/main_game_file.h"
+ #include "ags/shared/gui/gui_button.h"
+ #include "ags/shared/gui/gui_label.h"
+@@ -867,6 +868,33 @@ HGameFileError ReadGameData(LoadedGameEntities &ents, Stream *in, GameDataVersio
+ 	if (!err2)
+ 		return new MainGameFileError(kMGFErr_GameEntityFailed, err2);
+ 	game.numgui = _GP(guis).size();
++	// 繁中化：AGS 2.x 的 GUI 幾何寫死在遊戲資料裡，換成中文之後不一定夠用。
++	// 例如 Maniac Mansion Deluxe 的句子列是 gAction(0) 上一個只有 10 個遊戲像素高的
++	// label，塞得下英文卻塞不下 24px 的中文——超出的部分會被下面 gMaingui 的指令列蓋掉。
++	// 這裡開三個 config 覆寫，沒設就完全維持原行為（不是針對特定遊戲寫死）：
++	//   ags_gui_y_<gui>                 移動整個 GUI 的 Y
++	//   ags_gui_ctrl_y_<gui>_<ctrl>     移動單一控制項的 Y
++	//   ags_gui_ctrl_h_<gui>_<ctrl>     改單一控制項的高度
++	for (size_t gi = 0; gi < _GP(guis).size(); ++gi) {
++		GUIMain &g = _GP(guis)[gi];
++		char key[64];
++		Common::sprintf_s(key, "ags_gui_y_%u", (uint)gi);
++		if (ConfMan.hasKey(key)) {
++			g.Y = ConfMan.getInt(key);
++			debug(1, "AGS: gui %u '%s' Y -> %d", (uint)gi, g.Name.GetCStr(), g.Y);
++		}
++		for (int ci = 0; ci < g.GetControlCount(); ++ci) {
++			GUIObject *o = g.GetControl(ci);
++			Common::sprintf_s(key, "ags_gui_ctrl_y_%u_%d", (uint)gi, ci);
++			if (ConfMan.hasKey(key))
++				o->Y = ConfMan.getInt(key);
++			Common::sprintf_s(key, "ags_gui_ctrl_h_%u_%d", (uint)gi, ci);
++			if (ConfMan.hasKey(key)) {
++				o->SetHeight(ConfMan.getInt(key));
++				debug(1, "AGS: gui %u ctrl %d 高度 -> %d", (uint)gi, ci, o->GetHeight());
++			}
++		}
++	}
+ 
+ 	if (data_ver >= kGameVersion_260) {
+ 		err = ReadPlugins(ents.PluginInfos, in);
 diff --git a/engines/scumm/charset.cpp b/engines/scumm/charset.cpp
 index 190e1818..de8a2931 100644
 --- a/engines/scumm/charset.cpp

@@ -31,7 +31,7 @@ pack() {   # $1 = full | patch
     cp game-cht/mansiond/chinese_gb16x12.fnt "$APP/Contents/Resources/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$APP/Contents/Resources/cht/"
     cp deluxe/fonts/agsfnt-zh.ttf "$APP/Contents/Resources/cht/agsfnt-zh.ttf"
-    printf '[scummvm]\nags_ttf_font_size=24\nags_ttf_font_size_12=16\n' > "$APP/Contents/Resources/cht/scummvm.ini"
+    printf '[scummvm]\nags_ttf_font_size=24\nags_ttf_font_size_12=24\nags_gui_y_0=138\nags_gui_ctrl_h_0_0=14\n' > "$APP/Contents/Resources/cht/scummvm.ini"
     # 指令列九顆按鈕的中文圖：預先烘好的 18 張放在 cht_buttons.bin（我們自己的美術，
     # 不含遊戲資料），patch_buttons.py 只用標準函式庫把它們貼進玩家自己的 sprite 檔。
     cp maniac_mansion_cht/deluxe/tools/cht_buttons.bin \

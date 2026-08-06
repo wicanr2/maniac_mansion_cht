@@ -136,7 +136,7 @@ c &= 0x7f;                       // ← 中文首碼會在這裡被砍掉
     結尾的 `(y/n)y` 保持 ASCII——引擎是拿字串**最後一個字元**當「確定」鍵。
     為此碼表補了「暫」「繼」「續」三個字（碼位往後追加，既有字的碼不動）。
 
-## ScummVM／AGS（Deluxe 用，1 個檔）
+## ScummVM／AGS（Deluxe 用，2 個檔）
 
 12. **`ttf_font_renderer.cpp` 允許用 config 覆寫 TTF 名目尺寸** —— AGS 3.0 以前的遊戲資料裡字型槽沒有 size 欄位，替換進去的 TTF 一律以 8px 載入，中文無法閱讀。這個「名目尺寸」同時決定行距（`FontMetrics.NominalHeight`），所以**不能靠改字型檔繞過**：把字型的 `unitsPerEm` 改小確實會讓字形與推進寬一起放大（用 FreeType 量過），但行距仍停在 8px，上下兩行必疊。
 
@@ -144,6 +144,12 @@ c &= 0x7f;                       // ← 中文首碼會在這裡被砍掉
 
     * `ags_ttf_font_size` —— 全域覆寫。Deluxe 用 24（畫面跑 640×400）。
     * `ags_ttf_font_size_<槽號>` —— 單一字型槽覆寫。同一個遊戲裡不同槽的可用空間不一樣：Deluxe 的句子列上方只有約 18px 的空檔，24px 的字下緣會被指令列按鈕的圖蓋掉，所以句子列那一槽（12）另外設 16。詳見 `40-deluxe.md`。
+
+17. **`main_game_file.cpp` 讓 GUI 幾何可以用 config 覆寫** —— AGS 2.x 的 GUI 座標寫死在
+    遊戲資料裡，換成中文之後不一定夠用：Deluxe 的句子列是 `gAction` 上一個只有 10 個
+    遊戲像素高的 label，塞得下英文卻塞不下 24px 的中文。三個鍵都是沒設就維持原行為：
+    `ags_gui_y_<gui>`、`ags_gui_ctrl_y_<gui>_<ctrl>`、`ags_gui_ctrl_h_<gui>_<ctrl>`。
+    詳見 `40-deluxe.md`。
 
 ## ScummTR（2 個檔）
 

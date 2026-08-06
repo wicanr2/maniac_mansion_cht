@@ -61,7 +61,7 @@ SH
 
     # 對白 24px；句子列（font_640 位置 1 → 12 號槽）16px，
     # 不然字的下緣會被指令列按鈕蓋掉
-    printf '[scummvm]\nags_ttf_font_size=24\nags_ttf_font_size_12=16\n' > "$D/usr/share/cht/scummvm.ini"
+    printf '[scummvm]\nags_ttf_font_size=24\nags_ttf_font_size_12=24\nags_gui_y_0=138\nags_gui_ctrl_h_0_0=14\n' > "$D/usr/share/cht/scummvm.ini"
 
     cat > "$D/AppRun" <<'SH'
 #!/bin/sh

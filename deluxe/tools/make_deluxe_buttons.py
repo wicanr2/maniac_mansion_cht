@@ -64,6 +64,25 @@ VERBS = [
     ("a_button_pull",     "拉",   29, 30),
 ]
 
+# hi-res 版：遊戲裡 877–911 有一組**沒有任何語言在用的日文假名按鈕**
+# （わたす／とる／つかう／あける／みる／おす／しめる／はなす／ひく），
+# 尺寸剛好是英文那組的兩倍（80×28 / 128×28），而且 ac2game.dta 裡這 18 個槽
+# 已經標了 SPF_HIRES —— 引擎因此以 1:1 畫它們（見 engine/ac/sprite.cpp
+# get_new_size_for_sprite：旗標與遊戲解析度一致時直接原尺寸回傳），
+# 等於同樣的螢幕面積換到兩倍解析度，中文可以用 24×24 而不是 12×12。
+# 順序與寬窄和英文那組完全對應，所以只要照抄配對即可。
+VERBS_HIRES = [
+    ("a_button_give",     "給",   877, 878),
+    ("a_button_pick_up",  "拿起", 895, 896),
+    ("a_button_use",      "使用", 898, 899),
+    ("a_button_open",     "打開", 900, 901),
+    ("a_button_look_at",  "查看", 902, 903),
+    ("a_button_push",     "推",   904, 905),
+    ("a_button_close",    "關上", 906, 907),
+    ("a_button_talk_to",  "交談", 908, 909),
+    ("a_button_pull",     "拉",   910, 911),
+]
+
 
 def load_face(path="/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", index=2, size=GLYPH):
     """有 embedded bitmap strike 就用它（點陣字設計師手繪的，小尺寸最清楚），
@@ -122,15 +141,16 @@ def glyph_bits(face, ch, box=GLYPH, thresh=128, bold=0):
 
 
 def render_button(face, text, w, h, fg, box=GLYPH, thresh=128, bold=0,
-                  jitter=(), shadow=True, track=0):
+                  jitter=(), shadow=True, track=0, margin=1):
     """畫一張 w×h 的按鈕，回傳 RGB565 的 bytes。
 
     jitter：每個字的垂直位移（像素），用來做原版那種「字會上下跳」的手寫感。
     """
     px = [[BG] * w for _ in range(h)]
-    for y in range(h):
-        px[y][0] = TRANSP
-        px[y][w - 1] = TRANSP
+    for y in range(h):                      # 原圖左右各留透明邊（低解析 1 欄、hi-res 2 欄）
+        for m in range(margin):
+            px[y][m] = TRANSP
+            px[y][w - 1 - m] = TRANSP
 
     bits = [glyph_bits(face, ch, box, thresh, bold) for ch in text]
     # track = 字距。原版英文是把整顆按鈕撐滿的（40 寬填到 97%），中文兩個字擠在中間
@@ -142,7 +162,7 @@ def render_button(face, text, w, h, fg, box=GLYPH, thresh=128, bold=0,
     dy = list(jitter) + [0] * (len(bits) - len(jitter))
 
     def put(x, y, colour):
-        if 1 <= x < w - 1 and 0 <= y < h:
+        if margin <= x < w - margin and 0 <= y < h:
             px[y][x] = colour
 
     if shadow:
@@ -178,6 +198,8 @@ def main():
     ap.add_argument("--jitter", default="1,0", help="每字垂直位移，例如 \"-1,1\"（手寫跳動感）")
     ap.add_argument("--no-shadow", action="store_true")
     ap.add_argument("--track", type=int, default=10, help="字距（像素），把詞撐開到接近英文的密度")
+    ap.add_argument("--hires", action="store_true",
+                    help="用遊戲內建的 hi-res 槽（877-911，SPF_HIRES 已設），字框 24")
     ap.add_argument("--append", action="store_true",
                     help="把中文圖接在檔尾（不動原本的槽），槽號印出來給 .tra 用")
     ap.add_argument("--preview", help="另存一張對照圖")
@@ -186,15 +208,20 @@ def main():
     a = ap.parse_args()
 
     sf = SpriteFile(a.src)
+    verbs = VERBS_HIRES if a.hires else VERBS
+    if a.hires:                              # hi-res 的預設值另一組
+        if a.size == 14: a.size = 24
+        if a.track == 10: a.track = 6
+        if a.thresh == 100: a.thresh = 128
     face = load_face(a.font, a.face, a.size)
     jit = [int(v) for v in a.jitter.split(",") if v.strip()] if a.jitter else ()
     kw = dict(box=a.size, thresh=a.thresh, bold=a.bold, jitter=jit,
-              shadow=not a.no_shadow, track=a.track)
+              shadow=not a.no_shadow, track=a.track, margin=2 if a.hires else 1)
 
     repl = {}
     mapping = []
     next_slot = sf.topmost + 1
-    for name, text, n_slot, h_slot in VERBS:
+    for name, text, n_slot, h_slot in verbs:
         if a.append:
             n_slot, h_slot = next_slot, next_slot + 1
             next_slot += 2
@@ -211,6 +238,12 @@ def main():
     print(f"{a.out}（{len(data):,} bytes）")
     for name, text, n, hl, w, h in mapping:
         print(f"  {name:<20} {text:<3} 一般={n:<5} 反白={hl:<5} {w}x{h}")
+    if a.hires:
+        print("\n給 .tra 的 a_button_* 值（格子位置 一般圖 反白圖 熱鍵）：")
+        for (name, _, n, hl, _, _), (_, _, en_n, _), keys in zip(
+                mapping, VERBS, ["Qq", "Ww", "Ee", "Aa", "Ss", "Dd", "Zz", "Xx", "Cc"]):
+            pos = [v[2] for v in VERBS].index(en_n)
+            print(f"  {name} …\t{pos} {n} {hl} {keys}")
 
     if a.export_pack:
         # 只裝我們自己畫的那 18 張，不含任何遊戲美術，所以 patch 版可以帶著走。

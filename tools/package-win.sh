@@ -24,14 +24,14 @@ pack() {   # $1 = full | patch
     cp game-cht/mansiond/chinese_gb16x12.fnt "$D/cht/"
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$D/cht/"
     cp deluxe/fonts/agsfnt-zh.ttf "$D/cht/agsfnt-zh.ttf"
-    printf '[scummvm]\r\naspect_ratio=false\r\nfiltering=false\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=16\r\n' > "$D/cht/scummvm.ini"
+    printf '[scummvm]\r\naspect_ratio=false\r\nfiltering=false\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=24\r\nags_gui_y_0=138\r\nags_gui_ctrl_h_0_0=14\r\n' > "$D/cht/scummvm.ini"
 
     # [雷] scummvm.exe 旁邊放 scummvm.ini = ScummVM 的 portable 模式
     #      （backends/platform/sdl/win32/win32.cpp: detectPortableConfigFile()）。
     #      沒有這個檔的話，玩家直接雙擊 scummvm.exe 會吃到預設值，其中
     #      **aspect_ratio 校正會把 240 列非整數拉成 288 列** —— 美術看起來還好，
     #      但 24x24 中文字的一像素筆劃會被抹成一團綠色雜訊（實測 wine 重現）。
-    printf '[scummvm]\r\naspect_ratio=false\r\nfiltering=false\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=16\r\n' > "$D/scummvm.ini"
+    printf '[scummvm]\r\naspect_ratio=false\r\nfiltering=false\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=24\r\nags_gui_y_0=138\r\nags_gui_ctrl_h_0_0=14\r\n' > "$D/scummvm.ini"
     # 中文字型要佔滿 0–14 號槽（640×400 模式下遊戲改用 13/14 號槽）
     # 指令列九顆按鈕的中文圖：預先烘好的 18 張放在 cht_buttons.bin（我們自己的美術，
     # 不含遊戲資料），patch_buttons.py 只用標準函式庫把它們貼進玩家自己的 sprite 檔。

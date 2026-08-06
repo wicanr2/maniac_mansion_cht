@@ -1,15 +1,15 @@
 I'll take care of sucker face...	吸盤臉交給我……
 ...and you get the meteor.	……你去對付隕石。
 YyNn	YyNn
-a_button_give 0 1 2 Qq	0 1 2 Qq
-a_button_pick_up 1 7 8 Ww	1 7 8 Ww
-a_button_use 2 13 14 Ee	2 13 14 Ee
-a_button_open 3 3 4 Aa	3 3 4 Aa
-a_button_look_at 4 9 10 Ss	4 9 10 Ss
-a_button_push 5 15 28 Dd	5 15 28 Dd
-a_button_close 6 5 6 Zz	6 5 6 Zz
-a_button_talk_to 7 11 12 Xx	7 11 12 Xx
-a_button_pull 8 29 30 Cc	8 29 30 Cc
+a_button_give 0 1 2 Qq	0 877 878 Qq
+a_button_pick_up 1 7 8 Ww	1 895 896 Ww
+a_button_use 2 13 14 Ee	2 898 899 Ee
+a_button_open 3 3 4 Aa	3 900 901 Aa
+a_button_look_at 4 9 10 Ss	4 902 903 Ss
+a_button_push 5 15 28 Dd	5 904 905 Dd
+a_button_close 6 5 6 Zz	6 906 907 Zz
+a_button_talk_to 7 11 12 Xx	7 908 909 Xx
+a_button_pull 8 29 30 Cc	8 910 911 Cc
 So, how do we get in the mansion?	那我們要怎麼進去那棟大樓？
 Ummm...	唔……
 We can try looking for a key...	我們可以找找看鑰匙……

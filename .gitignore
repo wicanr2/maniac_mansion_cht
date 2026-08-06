@@ -10,3 +10,6 @@ game-cht/
 # 中文資料產物（倚天字型衍生物 / 含英文原文的 .tra）不進公開 repo
 dist-cht/
 *.tra
+
+# 指令列按鈕圖包是商業字型（華康少女文字）的點陣衍生物，比照倚天字型不入公開 repo
+cht_buttons.bin
