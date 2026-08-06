@@ -33,7 +33,13 @@ pack() {   # $1 = full | patch
     #      但 24x24 中文字的一像素筆劃會被抹成一團綠色雜訊（實測 wine 重現）。
     printf '[scummvm]\r\naspect_ratio=false\r\nfiltering=false\r\nags_ttf_font_size=24\r\nags_ttf_font_size_12=16\r\n' > "$D/scummvm.ini"
     # 中文字型要佔滿 0–14 號槽（640×400 模式下遊戲改用 13/14 號槽）
-    printf '@echo off\r\nsetlocal\r\nif "%%~1"=="" (echo 用法： %%~nx0 ^<Maniac Mansion Deluxe 遊戲夾^> ^& pause ^& exit /b 1)\r\ncopy /y "%%~dp0Chinese.tra" "%%~1" >nul\r\ncopy /y "%%~dp0acsetup.cfg" "%%~1" >nul\r\nfor /l %%%%i in (0,1,14) do copy /y "%%~dp0agsfnt-zh.ttf" "%%~1\\agsfnt%%%%i.ttf" >nul\r\necho 裝好了。\r\npause\r\n' \
+    # 指令列九顆按鈕的中文圖：預先烘好的 18 張放在 cht_buttons.bin（我們自己的美術，
+    # 不含遊戲資料），patch_buttons.py 只用標準函式庫把它們貼進玩家自己的 sprite 檔。
+    cp maniac_mansion_cht/deluxe/tools/cht_buttons.bin \
+       maniac_mansion_cht/deluxe/tools/ags_clib.py \
+       maniac_mansion_cht/deluxe/tools/ags_spr.py \
+       maniac_mansion_cht/deluxe/tools/patch_buttons.py "$D/cht/"
+    printf '@echo off\r\nsetlocal\r\nif "%%~1"=="" (echo 用法： %%~nx0 ^<Maniac Mansion Deluxe 遊戲夾^> ^& pause ^& exit /b 1)\r\ncopy /y "%%~dp0Chinese.tra" "%%~1" >nul\r\ncopy /y "%%~dp0acsetup.cfg" "%%~1" >nul\r\nfor /l %%%%i in (0,1,14) do copy /y "%%~dp0agsfnt-zh.ttf" "%%~1\\agsfnt%%%%i.ttf" >nul\r\nrem 指令列按鈕要靠 Python 貼圖；沒有 Python 就維持英文，其餘中文不受影響\r\nwhere py >nul 2>&1 && (py "%%~dp0patch_buttons.py" "%%~1") || (where python >nul 2>&1 && (python "%%~dp0patch_buttons.py" "%%~1") || echo 找不到 Python，指令列按鈕維持英文。)\r\necho 裝好了。\r\npause\r\n' \
         > "$D/cht/安裝到-Deluxe.bat"
 
     if [ "$KIND" = full ]; then

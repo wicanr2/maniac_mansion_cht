@@ -8,7 +8,7 @@
 # 產出 deluxe/game-cht/，可直接用含 AGS 引擎的 ScummVM 開起來。
 set -eu
 cd /w
-pip install --quiet fonttools
+pip install --quiet fonttools freetype-py
 T=maniac_mansion_cht/deluxe/tools
 G=deluxe/game-cht
 
@@ -30,6 +30,14 @@ python3 $T/tra_codec.py build deluxe/dumps/zh_all.tsv -o $G/Chinese.tra --utf8
 python3 $T/make_ags_font.py /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc \
     -o deluxe/fonts/agsfnt-zh.ttf --scale 1 --subset-from deluxe/dumps/zh_all.tsv --fail-on-missing
 for i in $(seq 0 20); do cp deluxe/fonts/agsfnt-zh.ttf $G/agsfnt$i.ttf; done
+
+# 指令列那九顆按鈕是 CLIB 裡的手繪 sprite，翻譯機制碰不到。做法是把中文烘成同尺寸的
+# sprite，寫成一份**鬆散的 acsprset.spr 放在遊戲夾**——引擎的 AssetManager 預設
+# kAssetPriorityDir，目錄會排在 CLIB 前面，所以遊戲夾裡這一份會蓋過 Maniac.exe 裡的那份，
+# 玩家原本的檔案完全不用動（實測：把 Give 換成橘色那張，畫面上就只有 Give 變橘）。
+python3 $T/ags_clib.py extract deluxe/game-orig-14/Maniac.exe acsprset.spr -o /tmp/acsprset.spr
+python3 $T/make_deluxe_buttons.py /tmp/acsprset.spr -o $G/acsprset.spr \
+    --preview deluxe/spr/preview-zh.png
 
 # upscale=1 讓 AGS 把這款 2.x 遊戲以 640×400 跑（engine/main/game_file.cpp:192），
 # 中文才有足夠的像素畫得清楚；純資料設定，不必動引擎。

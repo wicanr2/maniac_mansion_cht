@@ -32,6 +32,12 @@ pack() {   # $1 = full | patch
     cp deluxe/game-cht/Chinese.tra deluxe/game-cht/acsetup.cfg "$APP/Contents/Resources/cht/"
     cp deluxe/fonts/agsfnt-zh.ttf "$APP/Contents/Resources/cht/agsfnt-zh.ttf"
     printf '[scummvm]\nags_ttf_font_size=24\nags_ttf_font_size_12=16\n' > "$APP/Contents/Resources/cht/scummvm.ini"
+    # 指令列九顆按鈕的中文圖：預先烘好的 18 張放在 cht_buttons.bin（我們自己的美術，
+    # 不含遊戲資料），patch_buttons.py 只用標準函式庫把它們貼進玩家自己的 sprite 檔。
+    cp maniac_mansion_cht/deluxe/tools/cht_buttons.bin \
+       maniac_mansion_cht/deluxe/tools/ags_clib.py \
+       maniac_mansion_cht/deluxe/tools/ags_spr.py \
+       maniac_mansion_cht/deluxe/tools/patch_buttons.py "$APP/Contents/Resources/cht/"
     cat > "$APP/Contents/Resources/cht/安裝到-Deluxe.sh" <<'SH'
 #!/bin/sh
 # 用法：安裝到-Deluxe.sh <Maniac Mansion Deluxe 遊戲夾>
@@ -41,6 +47,12 @@ G=${1:?用法: $0 <遊戲夾>}
 H=$(cd "$(dirname "$0")" && pwd)
 cp "$H/Chinese.tra" "$H/acsetup.cfg" "$G/"
 i=0; while [ $i -le 14 ]; do cp "$H/agsfnt-zh.ttf" "$G/agsfnt$i.ttf"; i=$((i+1)); done
+# 指令列的九顆按鈕是遊戲資料裡的圖，換成中文要另外處理（純標準函式庫，不必 pip）
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$H/patch_buttons.py" "$G" || echo "指令列按鈕沒裝成，其餘中文不受影響。"
+else
+    echo "找不到 python3 → 指令列按鈕維持英文，其餘中文正常。"
+fi
 echo "裝好了。啟動時記得帶 --config=$H/scummvm.ini"
 SH
     chmod +x "$APP/Contents/Resources/cht/安裝到-Deluxe.sh"
