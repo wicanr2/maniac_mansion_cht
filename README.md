@@ -112,7 +112,7 @@ docs/               技術文件
 
 ## Deluxe 重製版也一起中文化了
 
-![Deluxe 中文](screenshots/deluxe-title-zh.png)
+![Deluxe 選角與人物簡介](screenshots/deluxe-title-zh.png)
 
 2004 年 Lucasfan Games 用 **AGS**（Adventure Game Studio）重製的 *Maniac Mansion Deluxe*，畫面重畫成 VGA、加了新房間與新台詞。它不是 SCUMM，但 ScummVM 2.6 起內建 AGS 引擎，所以一樣掛在 ScummVM 下跑。
 
@@ -139,9 +139,29 @@ upscale=1
 
 ![Deluxe 對白](screenshots/deluxe-dialog-zh.png)
 
-句子列（畫面下方那條「你要做什麼」）與九個指令按鈕在同一個 GUI 上，中間只有約 18px 的空檔，24px 的中文下緣會被按鈕的圖蓋掉。縮字形沒有用——`unitsPerEm` 只縮字形，基線位置仍由名目尺寸決定，字反而更貼下緣。解法是讓句子列**單獨換一個字型槽**：`font_640` 的第 1 個位置就是句子列（用「每個位置改指專屬槽 + 每槽不同字級」跑一次量出來的），把它從 14 號槽改指沒人用的 12 號槽，再用引擎修補新增的 `ags_ttf_font_size_12=16` 單獨調小，對白仍是 24px。
+### 句子列：問題不在指令列，在那個 10px 的 label
 
-一個誠實的限制：Deluxe 指令列那九個按鈕（Give / PICKUP / USE …）是**手繪 sprite**，存在 AGS 的資料檔裡，翻譯機制碰不到，所以維持英文。真正描述「你要做什麼」的那條句子列已經是中文（上圖的「交談 賽德」）。要換掉按鈕得解 CLIB 改 sprite，是另一個規模的子專案。
+![Deluxe 句子列](screenshots/deluxe-sentence-zh.png)
+
+畫面下方那條「你要做什麼」原本只能用 16px，24px 的中文下緣會被切掉、再被指令按鈕蓋住，看起來像「被指令列擋住」。把引擎裡的 GUI 幾何傾印出來才看清楚結構：句子列是**另一個 GUI 上的一個 label，只有 10 個遊戲像素高**，24px 的字會先被自己的 GUI 表面裁掉，剩下的才輪到按鈕蓋。而指令列往下讓也不可行——量過，它一路畫到 y=397，畫面高 400，底下只剩 2px。
+
+該動的是那個 label。引擎補了三個通用的 GUI 幾何覆寫（`ags_gui_y_<gui>`、`ags_gui_ctrl_y_…`、`ags_gui_ctrl_h_…`，沒設就完全維持原行為，不是對這款遊戲寫死），出貨值是 `ags_gui_y_0=138` + `ags_gui_ctrl_h_0_0=14`：往上移 6、加高到 14 個遊戲像素，句子列於是跟對白一樣是 24px。代價是壓到房間下緣約 5 個遊戲像素，那一帶是地板。
+
+### 指令列九顆按鈕也重畫成中文了
+
+![指令列前後對照](screenshots/deluxe-verbs-ab.png)
+
+那九顆按鈕（Give / PICKUP / USE …）不是文字而是**手繪 sprite**，`.tra` 只能指定「用哪一號圖」，翻譯機制換不出字形。原本當成資料層的限制擱著，後來從遊戲自己的資料裡找到出路。
+
+**遊戲內建 15 種語言的按鈕圖**，每種一組 18 張（9 個動詞 × 一般／反白）：德文 788–805、西文 806–823、法文 842–859、俄文 924–941……俄文那組是西里爾字母，證明非拉丁字形本來就在這個框架裡跑得動。而 877–911 這一帶的日文假名按鈕**沒有任何語言在用，而且帶著 `SPF_HIRES` 旗標**——引擎對這種 sprite 在 640×400 下是 1:1 畫，同樣的螢幕面積等於從 40×14 的畫布換成 80×28。中文筆劃要的就是這個。
+
+字形選**華康少女文字 W7**：原版那套英文按鈕是手繪的，筆劃不勻、基線還上下跳；黑體或明體擺上去太工整，反而不像同一套 UI（同一款字在 12px 會糊成一團，是換到 24×24 才活得下來）。畫法照原圖量出來的規則走：底 `0x1001` 近黑、字 `0x0211` 藍／反白 `0xFC64` 橘、右下 +1,+1 一層 `0x4008` 暗紫陰影、左右各留一欄 `0xF81F` 透明，再加 `--jitter` 讓第一個字掉 1px 模仿基線跳動。
+
+送到玩家手上不必動遊戲檔：AGS 的 `AssetManager` 預設 `kAssetPriorityDir`，遊戲夾排在 CLIB 前面，所以**遊戲夾裡放一份鬆散的 `acsprset.spr` 就會蓋過 `Maniac.exe` 裡那份**，玩家原本的檔案一個位元組都不會被改，要還原把它刪掉就好。patch 版的安裝腳本會從玩家自己的 exe 取出原圖、換掉那 18 張、寫成鬆散檔（純標準函式庫，不必 pip 裝東西）；沒有 python3 就只跳過按鈕，其餘中文照裝。
+
+烘好的圖包（`cht_buttons.bin`）是商業字型的點陣衍生物，比照倚天字型**不入版控**；repo 裡放的是產生器與安裝器（`deluxe/tools/`），自己重建要自備字型，也可以改用 WQY。
+
+![Deluxe 遊戲選單](screenshots/deluxe-menu-zh.png)
 
 細節見 [`docs/40-deluxe.md`](docs/40-deluxe.md)，現況與已知限制見 [`docs/50-status.md`](docs/50-status.md)。
 
@@ -155,7 +175,7 @@ upscale=1
 | Windows | `.zip`（`scummvm.exe` + DLL） | mingw-w64 交叉編，用 wine 實跑驗過 |
 | macOS | `.app`（universal，arm64 + x86_64） | GitHub Actions `macos-14`，每弧各編再 `lipo` 合併 |
 
-每個平台各兩種包：**full** 內嵌中文化好的遊戲、開了就能玩，只留本機；**patch** 只有引擎與中文資料，玩家自備遊戲。
+每個平台各兩種包，都放在 [Releases](https://github.com/wicanr2/maniac_mansion_cht/releases)：**full** 內嵌中文化好的兩款遊戲，解開就能玩；**patch** 只有引擎與中文資料，指到你自己的遊戲夾。
 
 建置與打包的完整說明、以及這一路踩到的雷（AGS 的 libmad 相依會被 configure 靜靜關掉、AGS 的 TTF 要的是 ScummVM 的 FreeType 而不是它自帶那份、mingw 的 `config.h` exclude 要錨定路徑⋯⋯）見 [`docs/60-packaging.md`](docs/60-packaging.md)。
 
