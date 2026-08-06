@@ -139,4 +139,28 @@ gh run download <run-id> --name maniac-cht-macos
 bash tools/package-macos.sh maniac-cht-macos-app.tar.gz
 ```
 
+### full 與 patch 的 `.app` 結構必須一樣（GitHub issue #2 的後續）
+
+原本只有 full 版做「真 binary 改名 `scummvm.bin` + 同名 shell wrapper 帶參數」，
+patch 版的 binary 就叫 `scummvm`。這個差異害到的是**已經有 full 版、想換新引擎的玩家**：
+
+1. 他解開 patch 版，發現 `玩 Deluxe 重製版（中文版）.command` 找不到 `scummvm.bin`（patch 版沒有）
+2. 於是把**舊版的 `scummvm.bin` 複製進新的 `.app`**
+3. 啟動器呼叫的正是 `scummvm.bin` → **整包更新完卻還是跑舊引擎**
+
+回報上來的症狀是「音效還是沒回來、指令列還是壞的」——兩個修正都在他沒拿到的那兩塊
+（新引擎、新 `.tra`）。他附的 Finder 截圖把這件事拍得很清楚：`MacOS/` 底下同時有
+57.9 MB 的舊 `scummvm.bin` 與 58.5 MB 的新 `scummvm`，而被執行的是前者。
+
+現在兩種包一律都是 `scummvm.bin` + wrapper（patch 版的 wrapper 只是原樣轉呼叫），
+覆蓋單一檔案就能換引擎。patch 版另外附：
+
+* **`更新我的完整版.command`** —— 把舊資料夾拖進去，它換引擎、換 Deluxe 譯文與字型、
+  換 v2 中文字型、重簽，遊戲檔不動。用假的舊包實測過：引擎／譯文／字型三項 md5 都換新，
+  15 個字型槽齊全，`Maniac.exe` 與 `*.LFL` 原封不動。
+* **`README.txt`** —— 寫明「不要只複製 `.app`」「不要把舊 `scummvm.bin` 複製到新 `.app`」。
+
+**教訓**：交付物有兩種版本時，內部結構要一致；不一致的地方玩家會用「看起來合理」的方式
+自己補齊，而那個方式通常正好繞過你的修正。
+
 **改動已簽名的 `.app` 之後簽章就失效**，所以注入完直接把 `_CodeSignature` 移掉（「未簽」勝過「壞簽」），並附一支 `修復-macOS.command`（`xattr -cr` + `codesign --force --deep --sign -`）。Linux 端無法代簽也無法實測，**這一包要請使用者在 Mac 上跑一次修復指令再開來確認**。
