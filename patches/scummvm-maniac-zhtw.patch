@@ -352,7 +352,7 @@ index ebb998ec..d7bedd1f 100644
  		sentenceline.right = _virtscr[kVerbVirtScreen].w - 1 + pixelXOffset;
  	}
 diff --git a/engines/scumm/verbs.cpp b/engines/scumm/verbs.cpp
-index 1637dd33..64f79f1f 100644
+index 1637dd33..b8018854 100644
 --- a/engines/scumm/verbs.cpp
 +++ b/engines/scumm/verbs.cpp
 @@ -231,13 +231,21 @@ void ScummEngine_v2::initV2MouseOver() {
@@ -362,10 +362,10 @@ index 1637dd33..64f79f1f 100644
 +	// 繁中化（24x24 字模）：指令區的一列從 8 個邏輯像素變成 14（字模 12 + 2 行距），
 +	// 物品欄因此從相對 32 移到 56（句子列 14 + 指令三列 42）。
 +	// 這些矩形同時是**點擊判定區**，所以改了之後滑鼠命中會自己跟著走。
-+	const bool bigCJK = (_useCJKMode && _2byteHeight == 24 &&
-+						 _game.id == GID_MANIAC && _game.version == 2);
-+	const int rowH = bigCJK ? 14 : 8;
-+	const int invTop = bigCJK ? 56 : 32;
++	// 列高一律由 getSentenceLineHeight() 給（另外三處：checkExecVerbs、checkV2Inventory、
++	// redrawV2Inventory 也用同一個來源——這個值先前散在四個地方，漏改一處就是 issue #1）。
++	const int rowH = getSentenceLineHeight();
++	const int invTop = 4 * rowH;
 +
  	// Inventory items
  
@@ -409,19 +409,17 @@ index 1637dd33..64f79f1f 100644
  
  	_mouseOverBoxesV2[kSentenceLine].color = color;
  	_mouseOverBoxesV2[kSentenceLine].hicolor = _hiLiteColorInvSentence;
-@@ -401,7 +409,10 @@ void ScummEngine_v2::checkV2MouseOver(Common::Point pos) {
+@@ -401,7 +409,8 @@ void ScummEngine_v2::checkV2MouseOver(Common::Point pos) {
  
  int ScummEngine_v2::checkV2Inventory(int x, int y) {
  	bool isNES = (_game.platform == Common::kPlatformNES);
 -	int inventoryArea = isNES ? 48 : 32;
-+	// 繁中化（24x24）：物品欄的起點跟著 12 格制往下移（見 initV2MouseOver）
-+	int inventoryArea = isNES ? 48
-+						: ((_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC &&
-+							_game.version == 2) ? 56 : 32);
++	// 繁中化（24x24）：物品欄的起點跟著 14 格制往下移（見 initV2MouseOver）
++	int inventoryArea = isNES ? 48 : 4 * getSentenceLineHeight();
  	int object = 0;
  
  	y -= _virtscr[kVerbVirtScreen].topline;
-@@ -438,7 +449,15 @@ void ScummEngine_v2::redrawV2Inventory() {
+@@ -438,7 +447,13 @@ void ScummEngine_v2::redrawV2Inventory() {
  	int maxVisibleInv, invCount, obj;
  	Common::Rect inventoryBox;
  	bool isNES = (_game.platform == Common::kPlatformNES);
@@ -432,13 +430,11 @@ index 1637dd33..64f79f1f 100644
 +	// 第三列指令的下半截一起清掉——原本看不出來，是因為清除只作用在虛擬螢幕緩衝區，
 +	// 而中文是畫在文字表面上；等文字表面也一起清了（見 gfx.cpp restoreBackground），
 +	// 「給／閱讀／查看／使用／修理」就少了一半。
-+	int inventoryArea = isNES ? 48
-+						: ((_useCJKMode && _2byteHeight == 24 && _game.id == GID_MANIAC &&
-+							_game.version == 2) ? 56 : 32);
++	int inventoryArea = isNES ? 48 : 4 * getSentenceLineHeight();
  	int maxChars = isNES ? 13 : 18;
  	int pixelYOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
  	int pixelXOffset = (_game.platform == Common::kPlatformC64) ? 1 : 0;
-@@ -485,6 +504,23 @@ void ScummEngine_v2::redrawV2Inventory() {
+@@ -485,6 +500,23 @@ void ScummEngine_v2::redrawV2Inventory() {
  		msg[maxChars] = 0;
  		strncpy((char *)msg, (const char *)tmp, maxChars);
  
@@ -462,3 +458,25 @@ index 1637dd33..64f79f1f 100644
  		// Draw it
  		drawString(1, msg);
  	}
+@@ -755,13 +787,19 @@ void ScummEngine_v2::checkExecVerbs() {
+ 	} else if (_mouseAndKeyboardStat & MBS_MOUSE_MASK) {
+ 		VirtScreen *zone = findVirtScreen(_mouse.y);
+ 		const byte code = _mouseAndKeyboardStat & MBS_LEFT_CLICK ? 1 : 2;
+-		const int inventoryArea = (_game.platform == Common::kPlatformNES) ? 48: 32;
++		// 繁中化（24x24 字模）：指令區一列是 14 個邏輯像素而不是 8，所以「句子列到哪裡結束」
++		// 與「物品欄從哪裡開始」都要跟著算（句子列 14 + 指令三列 42 = 56）。
++		// 這兩個數字原本寫死 8 / 32，結果第二、三列的點擊被當成物品欄點擊吃掉——
++		// hover 反白照常（那條路徑走 initV2MouseOver 的矩形，已經是 14 格制），
++		// 所以症狀是「滑過會變色、點下去沒反應」。
++		const int rowH = getSentenceLineHeight();
++		const int inventoryArea = (_game.platform == Common::kPlatformNES) ? 48 : 4 * rowH;
+ 
+ 		// Fixes bug #2773: "MANIACNES: Crash on click in speechtext-area"
+ 		if (!zone)
+ 			return;
+ 
+-		if (zone->number == kVerbVirtScreen && _mouse.y <= zone->topline + 8) {
++		if (zone->number == kVerbVirtScreen && _mouse.y <= zone->topline + rowH) {
+ 			// Click into V2 sentence line
+ 			runInputScript(kSentenceClickArea, 0, 0);
+ 		} else if (zone->number == kVerbVirtScreen && _mouse.y >= zone->topline + inventoryArea) {

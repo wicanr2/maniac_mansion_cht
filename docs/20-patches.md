@@ -2,8 +2,9 @@
 
 | 檔案 | 對象 | 規模 |
 |---|---|---|
-| `patches/scummvm-maniac-zhtw.patch` | ScummVM（`engines/scumm/`，4 個檔） | +134 / −3 |
-| `patches/scummvm-ags-cjk-fontsize.patch` | ScummVM（`engines/ags/`，1 個檔；Deluxe 用） | +13 / −0 |
+| `patches/scummvm-maniac-zhtw.patch` | ScummVM（`engines/scumm/`，9 個檔） | +235 / −17 |
+| `patches/scummvm-maniac-cht-all.patch` | 上面那份 ＋ `engines/ags/`（2 個檔），發行版用的完整 diff | +287 / −17 |
+| `patches/scummvm-ags-cjk-fontsize.patch` | ScummVM（`engines/ags/`，1 個檔；Deluxe 字級） | +13 / −0 |
 | `patches/scummtr-maniacv2-lossless.patch` | ScummTR（`src/ScummRp/`、`src/ScummTr/`） | +44 / −0 |
 
 ScummTR 那份的三處改動都以巨集開關包住，預設行為與上游完全相同。
@@ -102,11 +103,28 @@ c &= 0x7f;                       // ← 中文首碼會在這裡被砍掉
 
     所以畫面總高從 200 改成 **240**（字幕帶 28 + 房間 128 + 指令區 84），`initScreens(16, 144)` 跟著改成 `initScreens(28, 156)`——房間仍是完整的 128 列。這一步要在 `initGraphics()` 之前做，所以放在 `loadCJKFont()` 之後。
 
-### `verbs.cpp`（2 處）
+### `verbs.cpp`（3 處）
 
 12. **`redrawV2Inventory()` 的雙位元組安全截字** —— 原本 `strncpy(msg, tmp, maxChars)` 是按 byte 截斷，可能把雙位元組字砍成半個（只留首碼）→ 畫面上出現一個亂碼字。改成往前掃到最後一個完整的字再切。
 
 13. **`initV2MouseOver()` 的 14 格制** —— 24×24 時指令區一列從 8 改成 14、物品欄從相對 32 移到 56。這些矩形同時是**點擊判定區**，改了之後滑鼠命中會自己跟著走（實測點「查看」會正確反白）。`o2_verbOps()` 那邊把腳本給的 8 格制絕對座標（句子列 144、指令三列 152/160/168）換算成以 156 起算的 14 格制。
+
+13b. **`checkExecVerbs()` 的分區界線也要跟著 14 格制**（GitHub issue #1 第二輪） ——
+    這裡自己又算了一次「句子列到哪、物品欄從哪開始」，而且寫死 `topline + 8` 與
+    `inventoryArea = 32`。14 格制下指令三列落在相對 14–55，於是 `y >= 32` 的那一段
+    （第二列的下半 + 整個第三列）被判成**物品欄點擊**，交給 `checkV2Inventory()`；
+    那支又要求 `y >= 56` 才算數，所以直接 return 0 —— 點下去什麼都不會發生。
+    反白照常，因為 hover 走的是 `initV2MouseOver()` 的矩形（早就是 14 格制）。
+    症狀因此是「文字完整、滑過會變色、第一列點得動、二三列點不動」。
+
+    修法是四處共用同一個來源 `getSentenceLineHeight()`：
+    `inventoryArea = 4 * rowH`（8 → 32、14 → 56，非中文行為完全不變）。
+    這個數字先前散在 `initV2MouseOver` / `checkV2Inventory` / `redrawV2Inventory` /
+    `checkExecVerbs` 四個地方，改了三個漏一個就是這個 bug。
+
+    驗收用可重跑的迴圈（`workplace/verbclick-test.sh`）：15 格逐一「先點走到當基準 →
+    點目標格 → 比對句子列的像素雜湊」。修之前 10 格沒反應，修之後 14 格全變
+    （「走到」那格因為基準就是它，本來就不會變）。
 
 ### `string.cpp` / `gfx_gui.cpp` / `scumm.h`（句子列殘影，GitHub issue #1）
 
