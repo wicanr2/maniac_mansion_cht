@@ -1,6 +1,6 @@
 # 進度與待辦
 
-最後更新：2026-07-31。
+最後更新：2026-08-07。
 
 ## 兩條產線
 
@@ -10,8 +10,8 @@
 | 翻譯 | ✅ 完成（118 行刻意留原文，1 行抽不出來） | ✅ **1219 / 1219 完成** |
 | 畫面 | 640×480（hi-res 文字表面 + 字幕帶與指令區加高） | 640×400（`acsetup.cfg` 的 `[override] upscale=1`，純資料） |
 | 字型 | 倚天 **24×24** 原生點陣（`chinese_gb16x12.fnt`） | WQY Zen Hei TTF 24px，依譯文精簡（1238 字 / 371 KB），鋪滿 0–14 號字型槽 |
-| 引擎修補 | 5 個檔 +198 行 | 1 個檔 +13 行（TTF 名目尺寸） |
-| 實機驗證 | ✅ 多場景 | ✅ 多場景 |
+| 引擎修補 | 9 個檔 +235 行 | 2 個檔 +52 行（TTF 名目尺寸、GUI 幾何覆寫） |
+| 實機驗證 | ✅ 多場景；15 個指令逐格點擊有可重跑迴圈（`tools/verbclick-test.sh`，Linux + wine 各 15/15） | ✅ 多場景 |
 | 本機發佈包 | ✅ `dist-all/`，與 Deluxe 共用同一支 binary | ✅ 同上 |
 | 三平台包 | ✅ AppImage / Windows zip / macOS .app（full + patch 各一） | ✅ 同一批包裡 |
 
@@ -46,9 +46,13 @@
 路徑（同一支字型、同一個編碼），而且物件名已經確認正確；但沒有實際拿到
 物品做視覺確認。原因是自動化操作在門廊那段還沒解出可重複的拿取步驟。
 
-**指令按鈕不吃合成滑鼠點擊。** 驗證時用 xdotool 點按鈕沒有反應，改用遊戲
-自己的熱鍵（`a_button_*` 定義的 s/w/a/d/x…）就正常。這是自動化的限制，
-不是遊戲的問題——真人用滑鼠玩不受影響。
+**指令按鈕不吃合成滑鼠點擊（僅限 Deluxe）。** 用 xdotool 點 Deluxe 的按鈕沒有反應，
+改用遊戲自己的熱鍵（`a_button_*` 定義的 s/w/a/d/x…）就正常。
+
+⚠️ 這條原本沒有寫「僅限 Deluxe」，於是被拿來解釋 v2 那邊的點擊也點不動 ——
+**那個是真的 bug**（`checkExecVerbs()` 漏改的 8/32，見 `20-patches.md` 13b），
+不是自動化限制。v2 現在有 `tools/verbclick-test.sh` 逐格點擊的迴圈，Linux 與 wine
+都 15/15。教訓：把「工具的限制」當結論之前，先確認它涵蓋的範圍。
 
 ## 三平台包（2026-07-31）
 
@@ -56,7 +60,7 @@
 |---|---|---|
 | Linux | `maniac-mansion-cht-{full,patch}-x86_64.AppImage` | ✅ 容器內實跑：v2 進中文標題、Deluxe 出 `Translation initialized: Chinese` |
 | Windows | `maniac-mansion-cht-{full,patch}-windows-x64.zip` | ✅ wine 實跑：v2 中文標題、Deluxe「請再選兩個人」 |
-| macOS | `maniac-mansion-cht-{full,patch}-macos-universal.tar.gz` | ⚠️ CI 建置成功、雙弧與兩個引擎都在（`Engines (builtin): SCUMM / Adventure Game Studio`），但**沒有 Mac 可實跑**——請在 Mac 上先跑 `修復-macOS.command` 再開 |
+| macOS | `maniac-mansion-cht-{full,patch}-macos-universal.tar.gz` | ⚠️ CI 建置成功、雙弧與兩個引擎都在（`Engines (builtin): SCUMM / Adventure Game Studio`）；我們這邊**沒有 Mac 可實跑**，但回報者在自己的 Mac 上跑起來了（issue #1／#2）。第一次開之前先跑 `修復-macOS.command` |
 
 三個雷都是**實跑才抓得到**的（靜態檢查看不出來），細節在 `60-packaging.md`：
 
@@ -101,8 +105,12 @@ AGS 對 3.1 以前的遊戲留了 upscale 路徑，在 `acsetup.cfg` 加 `[overr
 英文版與 16×15 的路徑完全不受影響——把 `chinese_gb16x12.fnt` 換回 30 bytes/字的版本就回到舊行為。
 
 驗證：選角畫面的人物簡介（長句單行）、片頭製作名單兩行不疊、開場對白（「然後……呃……算了。」）、
-句子列、指令列三列不重疊、點「查看」會正確反白（點擊判定跟著新格線走）。
+句子列、指令列三列不重疊、點「查看」會正確反白。
 **還沒視覺確認**：折成兩行的長對白、物品欄有東西時的樣子。
+
+⚠️ 當時寫的「點擊判定跟著新格線走」只驗到**反白**，沒驗到**點下去有沒有作用** ——
+反白與點擊走的是不同的程式路徑，這個差別後來就是 issue #1c。
+現在 `tools/verbclick-test.sh` 驗的是後者（句子列有沒有跟著變）。
 
 ## 使用者回報的兩個 issue（2026-08-01 修）
 
@@ -114,6 +122,7 @@ AGS 對 3.1 以前的遊戲留了 upscale 路徑，在 `acsetup.cfg` 加 `[overr
 | 1b | （修完 1 才浮出）指令第三列少了下半截 | `redrawV2Inventory()` 物品欄起點 48 vs `initV2MouseOver()` 的 56，差 8 列 | 逐列量測畫面內容底端：舊 209.5、壞 203.5、修好 212 |
 | 2 | Deluxe 沒有音效（腳步、蟲鳴），音樂正常 | MMD 的音效是 OGG Vorbis，而 Windows／macOS 帶了 `--disable-vorbis`；AGS 的 `my_load_ogg()` 沒有 vorbis 時直接 `return nullptr`，不報錯 | wine 同平台 A/B：舊版進遊戲後 RMS 全 0，新版 59% 取樣有聲 |
 | 2b | Deluxe 指令列點不動、拿不起鑰匙 | `.tra` 的 `a_button_*` 是控制資料（格子位置／圖號／熱鍵），我們原封照抄鍵，腳本解析到字串而不是數字 | 點 PICKUP／LOOKAT 句子列正確變「拿起」「查看」 |
+| 1c | （2026-08-07 回報）v2 指令第二、三列點不動，只會變色 | `checkExecVerbs()` 自己又算了一次分區界線，寫死 `topline + 8` 與 `inventoryArea = 32`；14 格制下 `y >= 32` 的那段被判成物品欄點擊，而 `checkV2Inventory()` 要求 `y >= 56`，於是直接 return 0。hover 走另一條路徑（早就是 14 格制）所以照常反白 | `tools/verbclick-test.sh` 15 格逐一點：修前 10 格沒反應，修後 Linux／wine 各 15/15 |
 
 順手把 v1/v2 的暫停／重新開始／離開三則系統訊息也中文化了（原本是英文，官方沒有中文版）。
 
@@ -121,12 +130,13 @@ AGS 對 3.1 以前的遊戲留了 upscale 路徑，在 `acsetup.cfg` 加 `[overr
 
 1. 通關等級的長時間遊玩驗證（目前是多場景抽驗，不是全流程）。
 2. 物品欄有東西時的視覺確認（清除區與點擊區已對齊到 56，但還沒拿實際道具驗過）。
-3. 指令列 sprite 中文化（要寫 CLIB／sprite 寫入端，另案評估）。
-4. 補 `.tra` 的 `gameencoding` hint，清掉啟動時那行 TRA keys 警告（無害）。
-5. v1（C64 原版，SCUMM v1）尚未開始。
+3. 補 `.tra` 的 `gameencoding` hint，清掉啟動時那行 TRA keys 警告（無害）。
+4. v1（C64 原版，SCUMM v1）尚未開始。
 
-## 待你決定（授權相關，未定前不上傳）
+## 授權相關（已定案）
 
-* repo 裡的實機截圖。
-* Deluxe 譯文的形態：`.tra` 的鍵**必然是英文原文**，所以中文譯檔等於夾帶
-  完整英文台詞。要不要放上公開 repo 需要你決定；目前只留在本機。
+* 實機截圖：已放進 repo（僅用於說明中文化成果）。
+* Deluxe 譯文：`.tra` 的鍵**必然是英文原文**，所以中文譯檔等於夾帶完整英文台詞；
+  經確認後放上公開 repo。
+* 烘好的中文按鈕圖 `cht_buttons.bin` 是商業字型的點陣衍生物，比照倚天字型**不入版控**，
+  只放在發行包裡。
