@@ -15,10 +15,14 @@ pack() {   # $1 = full | patch
 
     cp "$EXE" "$D/"
     cp "$SDLDLL" "$D/"
-    # mingw 執行期 DLL：不附的話玩家端會跳「找不到 libgcc_s_seh-1.dll」
+    # mingw 執行期 DLL：不附的話玩家端會跳「找不到 libgcc_s_seh-1.dll」。
+    # [雷] 這一步要在 **mm-cht:mingw** 容器裡跑；在 dev 容器裡 find 一定落空，
+    #      而原本寫成 `[ -n "$f" ] && cp` 會安靜略過 —— 打出來的包看起來正常，
+    #      玩家開了才發現缺 DLL。所以找不到就直接失敗。
     for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
         f=$(find /usr/lib/gcc/x86_64-w64-mingw32 /usr/x86_64-w64-mingw32 -name "$dll" 2>/dev/null | head -1)
-        [ -n "$f" ] && cp "$f" "$D/"
+        [ -n "$f" ] || { echo "### 找不到 $dll —— 請在 mm-cht:mingw 容器裡打包"; exit 3; }
+        cp "$f" "$D/"
     done
 
     cp game-cht/mansiond/chinese_gb16x12.fnt "$D/cht/"

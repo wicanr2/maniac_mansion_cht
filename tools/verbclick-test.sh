@@ -32,7 +32,9 @@ i=0
 for y in 353 381 409; do
   for x in $XS; do
     i=$((i+1))
-    clk 273 353            # 基準：走到
+    # 基準用「走到」；輪到走到自己那格時改用「推」，否則基準與目標同字，
+    # 句子列本來就不會變，會被誤判成沒反應。
+    if [ "$i" = "3" ]; then clk 21 353; else clk 273 353; fi
     snap "c${i}_base"
     clk $x $y
     snap "c${i}_after"

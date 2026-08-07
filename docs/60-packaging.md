@@ -164,3 +164,16 @@ patch 版的 binary 就叫 `scummvm`。這個差異害到的是**已經有 full 
 自己補齊，而那個方式通常正好繞過你的修正。
 
 **改動已簽名的 `.app` 之後簽章就失效**，所以注入完直接把 `_CodeSignature` 移掉（「未簽」勝過「壞簽」），並附一支 `修復-macOS.command`（`xattr -cr` + `codesign --force --deep --sign -`）。Linux 端無法代簽也無法實測，**這一包要請使用者在 Mac 上跑一次修復指令再開來確認**。
+
+## Windows 包要在 `mm-cht:mingw` 容器裡打
+
+`package-win.sh` 會從容器裡撈三個 mingw 執行期 DLL（`libgcc_s_seh-1`、`libstdc++-6`、
+`libwinpthread-1`）。在 `mm-cht:dev` 容器裡跑，那三個 `find` 一定落空，而原本寫的是
+`[ -n "$f" ] && cp`——**安靜略過**，打出來的 zip 檔案數少三個、大小小 11 MB，
+本機看不出異狀，玩家開了才會跳「找不到 libgcc_s_seh-1.dll」。
+
+2026-08-07 真的踩到一次（重打 issue #1 修正時用錯 image），是比對新舊 zip 的檔案清單
+才發現。現在腳本改成找不到就 `exit 3`。
+
+驗收也一起補強：`tools/verbclick-wine.sh` 會解開發行用的 zip、用 wine 實跑，
+把 15 個指令逐格點過一遍（與 Linux 端 `tools/verbclick-test.sh` 同一套判準）。
